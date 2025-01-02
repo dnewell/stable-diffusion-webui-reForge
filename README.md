@@ -25,7 +25,7 @@ git clone https://github.com/Panchovix/stable-diffusion-webui-reForge.git
 cd stable-diffusion-webui-reForge
 git checkout experimental
 ```
-Then run webui-user.bat (Windows) or webui-user.sh (Linux).
+Then run webui-user.bat (Windows) or webui-user.sh (Linux, for this one make sure to uncomment the lines according of your folder, paths and setting you need).
 
 When you want to update:
 ```bash
