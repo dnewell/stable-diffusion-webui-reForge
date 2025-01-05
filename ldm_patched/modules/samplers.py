@@ -4,7 +4,7 @@
 from __future__ import annotations
 from ldm_patched.k_diffusion import sampling as k_diffusion_sampling
 from ldm_patched.unipc import uni_pc
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, NamedTuple
 if TYPE_CHECKING:
     from ldm_patched.modules.model_patcher import ModelPatcher
     from ldm_patched.modules.model_base import BaseModel
@@ -25,6 +25,7 @@ import ldm_patched.modules.model_patcher
 import ldm_patched.modules.patcher_extension
 import ldm_patched.hooks
 import torch
+from functools import partial
 
 def get_area_and_mult(conds, x_in, timestep_in):
     dims = tuple(x_in.shape[2:])
@@ -153,7 +154,7 @@ def cond_cat(c_list):
 
     return out
 
-def finalize_default_conds(model: 'BaseModel', hooked_to_run: dict[ldm_patched.hooks.HookGroup,list[tuple[tuple,int]]], default_conds: list[list[dict]], x_in, timestep):
+def finalize_default_conds(model: 'BaseModel', hooked_to_run: dict[ldm_patched.hooks.HookGroup,list[tuple[tuple,int]]], default_conds: list[list[dict]], x_in, timestep, model_options):
     # need to figure out remaining unmasked area for conds
     default_mults = []
     for _ in default_conds:
@@ -191,7 +192,7 @@ def finalize_default_conds(model: 'BaseModel', hooked_to_run: dict[ldm_patched.h
             # replace p's mult with calculated mult
             p = p._replace(mult=mult)
             if p.hooks is not None:
-                model.current_patcher.prepare_hook_patches_current_keyframe(timestep, p.hooks)
+                model.current_patcher.prepare_hook_patches_current_keyframe(timestep, p.hooks, model_options)
             hooked_to_run.setdefault(p.hooks, list())
             hooked_to_run[p.hooks] += [(p, i)]
 def calc_cond_batch(model: 'BaseModel', conds: list[list[dict]], x_in: torch.Tensor, timestep, model_options):
@@ -224,13 +225,13 @@ def _calc_cond_batch(model: 'BaseModel', conds: list[list[dict]], x_in: torch.Te
                 if p is None:
                     continue
                 if p.hooks is not None and hasattr(model, 'current_patcher') and model.current_patcher is not None:
-                    model.current_patcher.prepare_hook_patches_current_keyframe(timestep, p.hooks)
+                    model.current_patcher.prepare_hook_patches_current_keyframe(timestep, p.hooks, model_options)
                 hooked_to_run.setdefault(p.hooks, list())
                 hooked_to_run[p.hooks] += [(p, i)]
         default_conds.append(default_c)
 
     if has_default_conds:
-        finalize_default_conds(model, hooked_to_run, default_conds, x_in, timestep)
+        finalize_default_conds(model, hooked_to_run, default_conds, x_in, timestep, model_options)
 
     # We check if the model patcher exists before calling prepare_state
     # Will have probably to re-visit in case of issues
@@ -992,7 +993,9 @@ class CFGGuider:
 
         self.conds = process_conds(self.inner_model, noise, self.conds, device, latent_image, denoise_mask, seed)
 
-        extra_args = {"model_options": ldm_patched.modules.model_patcher.create_model_options_clone(self.model_options), "seed": seed}
+        extra_model_options = ldm_patched.modules.model_patcher.create_model_options_clone(self.model_options)
+        extra_model_options.setdefault("transformer_options", {})["sigmas"] = sigmas
+        extra_args = {"model_options": extra_model_options, "seed": seed}
 
         executor = ldm_patched.modules.patcher_extension.WrapperExecutor.new_class_executor(
             sampler.sample,
@@ -1060,60 +1063,58 @@ def sample(model, noise, positive, negative, cfg, device, sampler, sigmas, model
     return cfg_guider.sample(noise, latent_image, sampler, sigmas, denoise_mask, callback, disable_pbar, seed)
 
 
-SCHEDULER_NAMES = ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform", "ays", "ays_gits", "ays_11steps", "ays_32steps", "kl_optimal", "beta", "cosine", "cosexpblend", "phi", "laplace", "karras_dynamic", "sinusoidal_sf", "invcosinusoidal_sf", "react_cosinusoidal_dynsf"]
 SAMPLER_NAMES = KSAMPLER_NAMES + ["ddim", "uni_pc", "uni_pc_bh2"]
 
-def calculate_sigmas(model_sampling, scheduler_name, steps, is_sdxl='False'):
+class SchedulerHandler(NamedTuple):
+    handler: Callable[..., torch.Tensor]
+    use_ms: bool = True  # If True: handler(model_sampling, steps), else: handler(n, sigma_min, sigma_max)
+    needs_sdxl: bool = False  # If True: handler needs is_sdxl parameter
+
+SCHEDULER_HANDLERS = {
+    "normal": SchedulerHandler(normal_scheduler),
+    "karras": SchedulerHandler(get_sigmas_karras),
+    "exponential": SchedulerHandler(get_sigmas_exponential),
+    "polyexponential": SchedulerHandler(get_sigmas_polyexponential),
+    "sgm_uniform": SchedulerHandler(partial(normal_scheduler, sgm=True)),
+    "simple": SchedulerHandler(simple_scheduler),
+    "ddim_uniform": SchedulerHandler(ddim_scheduler),
+    "kl_optimal": SchedulerHandler(get_sigmas_kl_optimal),
+    "beta": SchedulerHandler(beta_scheduler),
+    "cosine": SchedulerHandler(cosine_scheduler),
+    "cosexpblend": SchedulerHandler(cosexpblend_scheduler),
+    "phi": SchedulerHandler(phi_scheduler),
+    "laplace": SchedulerHandler(get_sigmas_laplace),
+    "karras_dynamic": SchedulerHandler(get_sigmas_karras_dynamic),
+    "sinusoidal_sf": SchedulerHandler(get_sigmas_sinusoidal_sf),
+    "invcosinusoidal_sf": SchedulerHandler(get_sigmas_invcosinusoidal_sf),
+    "react_cosinusoidal_dynsf": SchedulerHandler(get_sigmas_react_cosinusoidal_dynsf),
+    "ays_custom": SchedulerHandler(get_sigmas_ays_custom),
+    # AYS schedulers that need SDXL parameter
+    "ays": SchedulerHandler(k_diffusion_sampling.get_sigmas_ays, use_ms=False, needs_sdxl=True),
+    "ays_gits": SchedulerHandler(k_diffusion_sampling.get_sigmas_ays_gits, use_ms=False, needs_sdxl=True),
+    "ays_11steps": SchedulerHandler(k_diffusion_sampling.get_sigmas_ays_11steps, use_ms=False, needs_sdxl=True),
+    "ays_32steps": SchedulerHandler(k_diffusion_sampling.get_sigmas_ays_32steps, use_ms=False, needs_sdxl=True),
+}
+
+SCHEDULER_NAMES = list(SCHEDULER_HANDLERS)
+SAMPLER_NAMES = KSAMPLER_NAMES + ["ddim", "uni_pc", "uni_pc_bh2"]
+
+def calculate_sigmas(model_sampling: object, scheduler_name: str, steps: int, is_sdxl: bool = False) -> torch.Tensor:
+    handler = SCHEDULER_HANDLERS.get(scheduler_name)
+    if handler is None:
+        err = f"error invalid scheduler {scheduler_name}"
+        logging.error(err)
+        raise ValueError(err)
+
     sigma_min = float(model_sampling.sigma_min)
     sigma_max = float(model_sampling.sigma_max)
 
-    if scheduler_name == "karras":
-        sigmas = get_sigmas_karras(model_sampling, steps)
-    elif scheduler_name == "exponential":
-        sigmas = get_sigmas_exponential(model_sampling, steps)
-    elif scheduler_name == "polyexponential":
-        sigmas = get_sigmas_polyexponential(model_sampling, steps)
-    elif scheduler_name == "normal":
-        sigmas = normal_scheduler(model_sampling, steps)
-    elif scheduler_name == "sgm_uniform":
-        sigmas = normal_scheduler(model_sampling, steps, sgm=True)
-    elif scheduler_name == "simple":
-        sigmas = simple_scheduler(model_sampling, steps)
-    elif scheduler_name == "ddim_uniform":
-        sigmas = ddim_scheduler(model_sampling, steps)
-    elif scheduler_name == "kl_optimal":
-        sigmas = get_sigmas_kl_optimal(model_sampling, steps)
-    elif scheduler_name == "beta":
-        sigmas = beta_scheduler(model_sampling, steps)
-    elif scheduler_name == "cosine":
-        sigmas = cosine_scheduler(model_sampling, steps)
-    elif scheduler_name == "cosexpblend":
-        sigmas = cosexpblend_scheduler(model_sampling, steps)
-    elif scheduler_name == "phi":
-        sigmas = phi_scheduler(model_sampling, steps)
-    elif scheduler_name == "laplace":
-        sigmas = get_sigmas_laplace(model_sampling, steps)
-    elif scheduler_name == "karras_dynamic":
-        sigmas = get_sigmas_karras_dynamic(model_sampling, steps)
-    elif scheduler_name == "sinusoidal_sf":
-        sigmas = get_sigmas_sinusoidal_sf(model_sampling, steps)
-    elif scheduler_name == "invcosinusoidal_sf":
-        sigmas = get_sigmas_invcosinusoidal_sf(model_sampling, steps)
-    elif scheduler_name == "react_cosinusoidal_dynsf":
-        sigmas = get_sigmas_react_cosinusoidal_dynsf(model_sampling, steps)
-    elif scheduler_name == "ays_custom":
-        sigmas = get_sigmas_ays_custom(model_sampling, steps)
-    elif scheduler_name == "ays":
-        sigmas = k_diffusion_sampling.get_sigmas_ays(n=steps, sigma_min=sigma_min, sigma_max=sigma_max, is_sdxl=is_sdxl)
-    elif scheduler_name == "ays_gits":
-        sigmas = k_diffusion_sampling.get_sigmas_ays_gits(n=steps, sigma_min=sigma_min, sigma_max=sigma_max, is_sdxl=is_sdxl)
-    elif scheduler_name == "ays_11steps":
-        sigmas = k_diffusion_sampling.get_sigmas_ays_11steps(n=steps, sigma_min=sigma_min, sigma_max=sigma_max, is_sdxl=is_sdxl)
-    elif scheduler_name == "ays_32steps":
-        sigmas = k_diffusion_sampling.get_sigmas_ays_32steps(n=steps, sigma_min=sigma_min, sigma_max=sigma_max, is_sdxl=is_sdxl)
+    if handler.use_ms:
+        return handler.handler(model_sampling, steps)
+    elif handler.needs_sdxl:
+        return handler.handler(n=steps, sigma_min=sigma_min, sigma_max=sigma_max, is_sdxl=is_sdxl)
     else:
-        logging.error("error invalid scheduler {}".format(scheduler_name))
-    return sigmas
+        return handler.handler(n=steps, sigma_min=sigma_min, sigma_max=sigma_max)
 
 def sampler_object(name):
     if name == "uni_pc":
