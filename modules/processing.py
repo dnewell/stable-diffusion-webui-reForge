@@ -3040,6 +3040,7 @@ elif opts.sd_processing == "reForge A1111":
         hr_scheduler: str = None
         hr_prompt: str = ''
         hr_negative_prompt: str = ''
+        hr_cfg: float = 1.0
         force_task_id: str = None
 
         cached_hr_uc = [None, None]
@@ -3136,6 +3137,8 @@ elif opts.sd_processing == "reForge A1111":
 
                 self.extra_generation_params["Hires prompt"] = get_hr_prompt
                 self.extra_generation_params["Hires negative prompt"] = get_hr_negative_prompt
+
+                self.extra_generation_params["Hires CFG Scale"] = self.hr_cfg
 
                 self.extra_generation_params["Hires schedule type"] = None  # to be set in sd_samplers_kdiffusion.py
 
@@ -3384,6 +3387,12 @@ elif opts.sd_processing == "reForge A1111":
             sampler_config = sd_samplers.find_sampler_config(self.hr_sampler_name or self.sampler_name)
             steps = self.hr_second_pass_steps or self.steps
             total_steps = sampler_config.total_steps(steps) if sampler_config else steps
+
+            if self.hr_cfg <= 0:
+                self.hr_uc = None
+                print('Skipping unconditional conditioning (HR pass) when CFG is 0 or less. Negative Prompts are ignored.')
+            else:
+                self.hr_uc = self.get_conds_with_caching(prompt_parser.get_learned_conditioning, hr_negative_prompts, self.firstpass_steps, [self.cached_hr_uc, self.cached_uc], self.hr_extra_network_data, total_steps)
 
             self.hr_uc = self.get_conds_with_caching(prompt_parser.get_learned_conditioning, hr_negative_prompts, self.firstpass_steps, [self.cached_hr_uc, self.cached_uc], self.hr_extra_network_data, total_steps)
             self.hr_c = self.get_conds_with_caching(prompt_parser.get_multicond_learned_conditioning, hr_prompts, self.firstpass_steps, [self.cached_hr_c, self.cached_c], self.hr_extra_network_data, total_steps)

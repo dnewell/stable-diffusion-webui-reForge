@@ -163,6 +163,9 @@ if opts.sd_sampler_cfg_denoiser == "reForge":
             skip_uncond = False
 
             # NGMS logic
+
+            if self.p.is_hr_pass == True:
+                cond_scale = self.p.hr_cfg
             if s_min_uncond > 0 and sigma[0] < s_min_uncond and not is_edit_model:
                 if self.step % 2 == 0 or shared.opts.s_min_uncond_all:
                     skip_uncond = True
