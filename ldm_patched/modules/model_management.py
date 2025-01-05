@@ -1135,9 +1135,8 @@ def soft_empty_cache(force=False):
     elif is_intel_xpu():
         torch.xpu.empty_cache()
     elif torch.cuda.is_available():
-        if force or is_nvidia(): #This seems to make things worse on ROCm so I only do it for cuda
-            torch.cuda.empty_cache()
-            torch.cuda.ipc_collect()
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
 
 def unload_all_models():
     free_memory(1e30, get_torch_device())
