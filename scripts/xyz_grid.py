@@ -492,6 +492,7 @@ class Script(scripts.Script):
             with gr.Column():
                 draw_legend = gr.Checkbox(label='Draw legend', value=True, elem_id=self.elem_id("draw_legend"))
                 draw_individual_labels = gr.Checkbox(label='Draw individual labels', value=False, elem_id=self.elem_id("draw_individual_labels"))
+                skip_grid = gr.Checkbox(label='Skip final grid generation', value=False, elem_id=self.elem_id("skip_grid"))
                 items_per_grid = gr.Slider(label='Items per grid (0 = default), for sequential grid generation.', value=0, minimum=0, maximum=200, step=1, elem_id=self.elem_id("items_per_grid"))
                 no_fixed_seeds = gr.Checkbox(label='Keep -1 for seeds', value=False, elem_id=self.elem_id("no_fixed_seeds"))
                 with gr.Row():
@@ -504,6 +505,16 @@ class Script(scripts.Script):
                 csv_mode = gr.Checkbox(label='Use text inputs instead of dropdowns', value=False, elem_id=self.elem_id("csv_mode"))
             with gr.Column():
                 margin_size = gr.Slider(label="Grid margins (px)", minimum=0, maximum=500, value=0, step=2, elem_id=self.elem_id("margin_size"))
+
+        # Add dependency for skip_grid to force include_lone_images
+        def update_include_lone_images(skip_grid):
+            return gr.update(value=True if skip_grid else include_lone_images.value, interactive=not skip_grid)
+        
+        skip_grid.change(
+            fn=update_include_lone_images,
+            inputs=[skip_grid],
+            outputs=[include_lone_images]
+        )
 
         with gr.Row(variant="compact", elem_id="swap_axes"):
             swap_xy_axes_button = gr.Button(value="Swap X/Y axes", elem_id="xy_grid_swap_axes_button")
@@ -584,7 +595,9 @@ class Script(scripts.Script):
             (z_values_dropdown, lambda params: get_dropdown_update_from_params("Z", params)),
         )
 
-        return [x_type, x_values, x_values_dropdown, y_type, y_values, y_values_dropdown, z_type, z_values, z_values_dropdown, draw_legend, draw_individual_labels, items_per_grid, include_lone_images, include_sub_grids, no_fixed_seeds, vary_seeds_x, vary_seeds_y, vary_seeds_z, margin_size, csv_mode]
+        return [x_type, x_values, x_values_dropdown, y_type, y_values, y_values_dropdown, z_type, z_values, z_values_dropdown, 
+            draw_legend, draw_individual_labels, skip_grid, items_per_grid, include_lone_images, include_sub_grids, 
+            no_fixed_seeds, vary_seeds_x, vary_seeds_y, vary_seeds_z, margin_size, csv_mode]
     
     def draw_label_on_image(image, text):
         from PIL import ImageDraw, ImageFont
@@ -601,7 +614,9 @@ class Script(scripts.Script):
         draw.rectangle([(margin, margin), (margin + text_width, margin + text_height)], fill='black')
         draw.text((margin, margin), text, fill='white', font=font)
 
-    def run(self, p, x_type, x_values, x_values_dropdown, y_type, y_values, y_values_dropdown, z_type, z_values, z_values_dropdown, draw_legend, draw_individual_labels, items_per_grid, include_lone_images, include_sub_grids, no_fixed_seeds, vary_seeds_x, vary_seeds_y, vary_seeds_z, margin_size, csv_mode):
+    def run(self, p, x_type, x_values, x_values_dropdown, y_type, y_values, y_values_dropdown, z_type, z_values, z_values_dropdown, 
+        draw_legend, draw_individual_labels, skip_grid, items_per_grid, include_lone_images, include_sub_grids, 
+        no_fixed_seeds, vary_seeds_x, vary_seeds_y, vary_seeds_z, margin_size, csv_mode):
         x_type, y_type, z_type = x_type or 0, y_type or 0, z_type or 0  # if axle type is None set to 0
 
         if not no_fixed_seeds:
@@ -609,6 +624,10 @@ class Script(scripts.Script):
 
         if not opts.return_grid:
             p.batch_size = 1
+
+        if skip_grid:
+            include_lone_images = True
+            include_sub_grids = False
 
         def process_axis(opt, vals, vals_dropdown):
             if opt.label == 'Nothing':
@@ -891,7 +910,7 @@ class Script(scripts.Script):
             return res
 
         with SharedSettingsStackHelper():
-            if items_per_grid > 0:
+            if items_per_grid > 0 and not skip_grid:
                 items_per_grid = max(1, int(items_per_grid))
                 
                 # Determine which axis has the most values
@@ -991,65 +1010,117 @@ class Script(scripts.Script):
 
                     return final_processed
 
-            # Original draw_xyz_grid call remains as fallback
-            processed = draw_xyz_grid(
-                p,
-                xs=xs,
-                ys=ys,
-                zs=zs,
-                x_labels=[x_opt.format_value(p, x_opt, x) for x in xs],
-                y_labels=[y_opt.format_value(p, y_opt, y) for y in ys],
-                z_labels=[z_opt.format_value(p, z_opt, z) for z in zs],
-                cell=cell,
-                draw_legend=draw_legend,
-                draw_individual_labels=draw_individual_labels,
-                include_lone_images=include_lone_images,
-                include_sub_grids=include_sub_grids,
-                first_axes_processed=first_axes_processed,
-                second_axes_processed=second_axes_processed,
-                margin_size=margin_size
-            )
+            # Handle either skip_grid or normal processing without items_per_grid
+            if skip_grid:
+                # When skipping grid, process all images individually
+                processed = Processed(p, [], p.seed, "")
+                processed.images = []
+                processed.infotexts = []
+                processed.all_prompts = []
+                processed.all_seeds = []
+                
+                total = len(xs) * len(ys) * len(zs)
+                done = 0
+                
+                for iz, z in enumerate(zs):
+                    for iy, y in enumerate(ys):
+                        for ix, x in enumerate(xs):
+                            if state.interrupted:
+                                break
+                                
+                            proc = cell(x, y, z, ix, iy, iz)
+                            if proc.images:
+                                processed.images.extend(proc.images)
+                                processed.infotexts.extend(proc.infotexts)
+                                processed.all_prompts.extend(proc.all_prompts)
+                                processed.all_seeds.extend(proc.all_seeds)
+                            
+                            done += 1
+                            print(f"Processing image {done}/{total}")
+                            
+                if opts.grid_save:
+                    # Save individual images
+                    for i, image in enumerate(processed.images):
+                        images.save_image(
+                            image,
+                            p.outpath_grids,
+                            f"xyz_image_{i+1}",
+                            info=processed.infotexts[i],
+                            extension=opts.grid_format,
+                            prompt=processed.all_prompts[i],
+                            seed=processed.all_seeds[i],
+                            grid=False,
+                            p=processed
+                        )
+                        
+                return processed
+            else:
+                # Original grid processing without items_per_grid
+                processed = draw_xyz_grid(
+                    p,
+                    xs=xs,
+                    ys=ys,
+                    zs=zs,
+                    x_labels=[x_opt.format_value(p, x_opt, x) for x in xs],
+                    y_labels=[y_opt.format_value(p, y_opt, y) for y in ys],
+                    z_labels=[z_opt.format_value(p, z_opt, z) for z in zs],
+                    cell=cell,
+                    draw_legend=draw_legend,
+                    draw_individual_labels=draw_individual_labels,
+                    include_lone_images=include_lone_images,
+                    include_sub_grids=include_sub_grids,
+                    first_axes_processed=first_axes_processed,
+                    second_axes_processed=second_axes_processed,
+                    margin_size=margin_size
+                )
 
-        if not processed.images:
-            # It broke, no further handling needed.
-            return processed
+                if not processed.images:
+                    # It broke, no further handling needed.
+                    return processed
 
-        z_count = len(zs)
+                z_count = len(zs)
 
-        # Set the grid infotexts to the real ones with extra_generation_params
-        processed.infotexts[:1 + z_count] = grid_infotext[:1 + z_count]
+                # Set the grid infotexts to the real ones with extra_generation_params
+                processed.infotexts[:1 + z_count] = grid_infotext[:1 + z_count]
 
-        if opts.grid_save:
-            # Auto-save main grid
-            images.save_image(processed.images[0], p.outpath_grids, "xyz_grid", 
-                            info=processed.infotexts[0], extension=opts.grid_format, 
-                            prompt=processed.all_prompts[0], seed=processed.all_seeds[0], 
-                            grid=True, p=processed)
+                if opts.grid_save:
+                    # Auto-save main grid
+                    images.save_image(
+                        processed.images[0], 
+                        p.outpath_grids, 
+                        "xyz_grid", 
+                        info=processed.infotexts[0], 
+                        extension=opts.grid_format, 
+                        prompt=processed.all_prompts[0], 
+                        seed=processed.all_seeds[0], 
+                        grid=True, 
+                        p=processed
+                    )
 
-        # Organize the final image list
-        if include_lone_images:
-            # Keep the main grid and individual images, but remove any duplicate grids
-            main_grid = processed.images[0]
-            individual_images = processed.images[z_count + 1:]  # Get only the individual images
-            processed.images = [main_grid] + individual_images
-            
-            # Adjust other lists accordingly
-            main_info = processed.infotexts[0]
-            individual_infos = processed.infotexts[z_count + 1:]
-            processed.infotexts = [main_info] + individual_infos
-            
-            main_prompt = processed.all_prompts[0]
-            individual_prompts = processed.all_prompts[z_count + 1:]
-            processed.all_prompts = [main_prompt] + individual_prompts
-            
-            main_seed = processed.all_seeds[0]
-            individual_seeds = processed.all_seeds[z_count + 1:]
-            processed.all_seeds = [main_seed] + individual_seeds
-        else:
-            # Keep only the main grid
-            processed.images = [processed.images[0]]
-            processed.infotexts = [processed.infotexts[0]]
-            processed.all_prompts = [processed.all_prompts[0]]
-            processed.all_seeds = [processed.all_seeds[0]]
+                # Organize the final image list
+                if include_lone_images:
+                    # Keep the main grid and individual images
+                    main_grid = processed.images[0]
+                    individual_images = processed.images[z_count + 1:]  # Get only the individual images
+                    processed.images = [main_grid] + individual_images
+                    
+                    # Adjust other lists accordingly
+                    main_info = processed.infotexts[0]
+                    individual_infos = processed.infotexts[z_count + 1:]
+                    processed.infotexts = [main_info] + individual_infos
+                    
+                    main_prompt = processed.all_prompts[0]
+                    individual_prompts = processed.all_prompts[z_count + 1:]
+                    processed.all_prompts = [main_prompt] + individual_prompts
+                    
+                    main_seed = processed.all_seeds[0]
+                    individual_seeds = processed.all_seeds[z_count + 1:]
+                    processed.all_seeds = [main_seed] + individual_seeds
+                else:
+                    # Keep only the main grid
+                    processed.images = [processed.images[0]]
+                    processed.infotexts = [processed.infotexts[0]]
+                    processed.all_prompts = [processed.all_prompts[0]]
+                    processed.all_seeds = [processed.all_seeds[0]]
 
-        return processed
+                return processed
