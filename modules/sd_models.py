@@ -637,102 +637,154 @@ def get_obj_from_str(string, reload=False):
         importlib.reload(module_imp)
     return getattr(importlib.import_module(module, package=None), cls)
 
-def unload_all_models_when_pinned():
-    global model_data
-    print(" ------------ Unloading all models (pinned shared memory)... -------------")
-    for model in model_data.loaded_sd_models:
-        if hasattr(model, 'model_unload'):
-            model.model_unload()
-        elif hasattr(model, 'to'):
-            model.to('cpu')
-    model_data.loaded_sd_models.clear()
-    model_data.sd_model = None
-    model_management.soft_empty_cache(force=True)
-    gc.collect()
+if shared.opts.model_management_type == 'Old':
+    def load_model(checkpoint_info=None, already_loaded_state_dict=None):
+        from modules import sd_hijack
+        checkpoint_info = checkpoint_info or select_checkpoint()
 
-def load_model(checkpoint_info=None, already_loaded_state_dict=None):
-    import logging as log
-    global model_data
+        timer = Timer()
 
-    checkpoint_info = checkpoint_info or select_checkpoint()
-    timer = Timer()
+        if model_data.sd_model:
+            if model_data.sd_model.filename == checkpoint_info.filename:
+                return model_data.sd_model
 
-    if model_management.DISABLE_SMART_MEMORY:
-        # Pinned shared memory case
-        for loaded_model in model_data.loaded_sd_models:
-            if loaded_model.filename == checkpoint_info.filename:
-                log.debug(f"Using already loaded model {loaded_model.sd_checkpoint_info.title}: done in {timer.summary()}")
-                model_data.loaded_sd_models.remove(loaded_model)
-                model_data.loaded_sd_models.insert(0, loaded_model)
-                model_data.set_sd_model(loaded_model, already_loaded=True)
-                return loaded_model
+            model_data.sd_model = None
+            model_data.loaded_sd_models = []
+            model_management.unload_all_models()
+            model_management.soft_empty_cache()
+            gc.collect()
 
-        if len(model_data.loaded_sd_models) >= shared.opts.sd_checkpoints_limit:
-            unload_first_loaded_model()
+        timer.record("unload existing model")
 
-        timer.record("unload first loaded model if necessary (pinned)")
+        if already_loaded_state_dict is not None:
+            state_dict = already_loaded_state_dict
+        else:
+            state_dict = get_checkpoint_state_dict(checkpoint_info, timer)
 
-    else:
-        # Non-pinned memory case
-        for loaded_model in model_data.loaded_sd_models:
-            if loaded_model.filename == checkpoint_info.filename:
-                log.debug(f"Using already loaded model {loaded_model.sd_checkpoint_info.title}: done in {timer.summary()}")
-                model_data.loaded_sd_models.remove(loaded_model)
-                model_data.loaded_sd_models.insert(0, loaded_model)
-                model_data.set_sd_model(loaded_model, already_loaded=True)
-                return loaded_model
+        if shared.opts.sd_checkpoint_cache > 0:
+            # cache newly loaded model
+            checkpoints_loaded[checkpoint_info] = state_dict.copy()
 
-        if len(model_data.loaded_sd_models) >= shared.opts.sd_checkpoints_limit:
-            unload_first_loaded_model()
+        sd_model = forge_loader.load_model_for_a1111(timer=timer, checkpoint_info=checkpoint_info, state_dict=state_dict)
+        sd_model.filename = checkpoint_info.filename
 
-        timer.record("unload first loaded model if necessary (non-pinned)")
+        del state_dict
 
-    current_loaded_models = len(model_data.loaded_sd_models)
-    print(f"Loading model {checkpoint_info.title} ({current_loaded_models + 1} of {shared.opts.sd_checkpoints_limit})")
+        # clean up cache if limit is reached
+        while len(checkpoints_loaded) > shared.opts.sd_checkpoint_cache:
+            checkpoints_loaded.popitem(last=False)
 
-    if already_loaded_state_dict is not None:
-        state_dict = already_loaded_state_dict
-    else:
-        state_dict = get_checkpoint_state_dict(checkpoint_info, timer)
+        shared.opts.data["sd_checkpoint_hash"] = checkpoint_info.sha256
 
-    sd_model = forge_loader.load_model_for_a1111(timer=timer, checkpoint_info=checkpoint_info, state_dict=state_dict)
-    sd_model.filename = checkpoint_info.filename
+        sd_vae.delete_base_vae()
+        sd_vae.clear_loaded_vae()
+        vae_file, vae_source = sd_vae.resolve_vae(checkpoint_info.filename).tuple()
+        sd_vae.load_vae(sd_model, vae_file, vae_source)
+        timer.record("load VAE")
 
-    model_data.loaded_sd_models.insert(0, sd_model)  # Add new model to the front
-    model_data.set_sd_model(sd_model)
-    model_data.was_loaded_at_least_once = True
+        model_data.set_sd_model(sd_model)
+        model_data.was_loaded_at_least_once = True
 
-    # Ensure the new model is marked as currently used
-    sd_model.currently_used = True
+        sd_hijack.model_hijack.embedding_db.load_textual_inversion_embeddings(force_reload=True)  # Reload embeddings after model load as they may or may not fit the model
 
-    # Free memory if necessary
-    model_management.free_memory(
-        model_management.get_total_memory(model_management.get_torch_device()),
-        model_management.get_torch_device(),
-        keep_loaded=[sd_model] + model_data.loaded_sd_models[1:]  # Keep the newly loaded model and others
-    )
+        timer.record("load textual inversion embeddings")
 
-    shared.opts.data["sd_checkpoint_hash"] = checkpoint_info.sha256
+        script_callbacks.model_loaded_callback(sd_model)
 
-    sd_vae.delete_base_vae()
-    sd_vae.clear_loaded_vae()
-    vae_file, vae_source = sd_vae.resolve_vae(checkpoint_info.filename).tuple()
-    sd_vae.load_vae(sd_model, vae_file, vae_source)
-    timer.record("load VAE")
+        timer.record("scripts callbacks")
 
-    sd_hijack.model_hijack.embedding_db.load_textual_inversion_embeddings(force_reload=True)
-    timer.record("load textual inversion embeddings")
+        with torch.no_grad():
+            sd_model.cond_stage_model_empty_prompt = get_empty_cond(sd_model)
 
-    script_callbacks.model_loaded_callback(sd_model)
-    timer.record("scripts callbacks")
+        timer.record("calculate empty prompt")
 
-    with torch.no_grad():
-        sd_model.cond_stage_model_empty_prompt = get_empty_cond(sd_model)
-    timer.record("calculate empty prompt")
+        print(f"Model loaded in {timer.summary()}.")
 
-    print(f"Model {checkpoint_info.title} loaded in {timer.summary()}.")
+        return sd_model
+elif shared.opts.model_management_type == 'New':
+    def load_model(checkpoint_info=None, already_loaded_state_dict=None):
+        import logging as log
+        global model_data
 
-    return sd_model
+        checkpoint_info = checkpoint_info or select_checkpoint()
+        timer = Timer()
+
+        if model_management.DISABLE_SMART_MEMORY:
+            # Pinned shared memory case
+            for loaded_model in model_data.loaded_sd_models:
+                if loaded_model.filename == checkpoint_info.filename:
+                    log.debug(f"Using already loaded model {loaded_model.sd_checkpoint_info.title}: done in {timer.summary()}")
+                    model_data.loaded_sd_models.remove(loaded_model)
+                    model_data.loaded_sd_models.insert(0, loaded_model)
+                    model_data.set_sd_model(loaded_model, already_loaded=True)
+                    return loaded_model
+
+            if len(model_data.loaded_sd_models) >= shared.opts.sd_checkpoints_limit:
+                unload_first_loaded_model()
+
+            timer.record("unload first loaded model if necessary (pinned)")
+
+        else:
+            # Non-pinned memory case
+            for loaded_model in model_data.loaded_sd_models:
+                if loaded_model.filename == checkpoint_info.filename:
+                    log.debug(f"Using already loaded model {loaded_model.sd_checkpoint_info.title}: done in {timer.summary()}")
+                    model_data.loaded_sd_models.remove(loaded_model)
+                    model_data.loaded_sd_models.insert(0, loaded_model)
+                    model_data.set_sd_model(loaded_model, already_loaded=True)
+                    return loaded_model
+
+            if len(model_data.loaded_sd_models) >= shared.opts.sd_checkpoints_limit:
+                unload_first_loaded_model()
+
+            timer.record("unload first loaded model if necessary (non-pinned)")
+
+        current_loaded_models = len(model_data.loaded_sd_models)
+        print(f"Loading model {checkpoint_info.title} ({current_loaded_models + 1} of {shared.opts.sd_checkpoints_limit})")
+
+        if already_loaded_state_dict is not None:
+            state_dict = already_loaded_state_dict
+        else:
+            state_dict = get_checkpoint_state_dict(checkpoint_info, timer)
+
+        sd_model = forge_loader.load_model_for_a1111(timer=timer, checkpoint_info=checkpoint_info, state_dict=state_dict)
+        sd_model.filename = checkpoint_info.filename
+
+        model_data.loaded_sd_models.insert(0, sd_model)  # Add new model to the front
+        model_data.set_sd_model(sd_model)
+        model_data.was_loaded_at_least_once = True
+
+        # Ensure the new model is marked as currently used
+        sd_model.currently_used = True
+
+        # Free memory if necessary
+        model_management.free_memory(
+            model_management.get_total_memory(model_management.get_torch_device()),
+            model_management.get_torch_device(),
+            keep_loaded=[sd_model] + model_data.loaded_sd_models[1:]  # Keep the newly loaded model and others
+        )
+
+        shared.opts.data["sd_checkpoint_hash"] = checkpoint_info.sha256
+
+        sd_vae.delete_base_vae()
+        sd_vae.clear_loaded_vae()
+        vae_file, vae_source = sd_vae.resolve_vae(checkpoint_info.filename).tuple()
+        sd_vae.load_vae(sd_model, vae_file, vae_source)
+        timer.record("load VAE")
+
+        sd_hijack.model_hijack.embedding_db.load_textual_inversion_embeddings(force_reload=True)
+        timer.record("load textual inversion embeddings")
+
+        script_callbacks.model_loaded_callback(sd_model)
+        timer.record("scripts callbacks")
+
+        with torch.no_grad():
+            sd_model.cond_stage_model_empty_prompt = get_empty_cond(sd_model)
+        timer.record("calculate empty prompt")
+
+        print(f"Model {checkpoint_info.title} loaded in {timer.summary()}.")
+
+        return sd_model
 
 
 def unload_first_loaded_model():
