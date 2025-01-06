@@ -230,7 +230,7 @@ For img2img, VAE is used to process user's input image before the sampling, and 
 }))
 
 options_templates.update(options_section(('model_management_type', "Model Magement Type", "sd"), {
-    "sd_sampler_cfg_denoiser": OptionInfo(
+    "model_management_type": OptionInfo(
         "Old",
         "MM Type",
         gr.Radio,
