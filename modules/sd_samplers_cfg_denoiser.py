@@ -60,9 +60,6 @@ if opts.sd_sampler_cfg_denoiser == "reForge":
         def combine_denoised(self, x_out, conds_list, uncond, cond_scale):
             denoised_uncond = x_out[-uncond.shape[0]:]
             denoised = torch.clone(denoised_uncond)
-            for i, conds in enumerate(conds_list):
-                for cond_index, weight in conds:
-                    denoised[i] += (x_out[cond_index] - denoised_uncond[i]) * (weight * cond_scale)
             return denoised
 
         def combine_denoised_for_edit_model(self, x_out, cond_scale):
@@ -318,11 +315,6 @@ elif opts.sd_sampler_cfg_denoiser == "reForgeDev":
         def combine_denoised(self, x_out, conds_list, uncond, cond_scale):
             denoised_uncond = x_out[-uncond.shape[0]:]
             denoised = torch.clone(denoised_uncond)
-
-            for i, conds in enumerate(conds_list):
-                for cond_index, weight in conds:
-                    denoised[i] += (x_out[cond_index] - denoised_uncond[i]) * (weight * cond_scale)
-
             return denoised
 
         def combine_denoised_for_edit_model(self, x_out, cond_scale):
