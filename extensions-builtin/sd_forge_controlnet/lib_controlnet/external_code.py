@@ -268,15 +268,6 @@ class ControlNetUnit:
     advanced_weighting: Optional[List[float]] = None
     ipa_block_weight: Optional[str] = None
 
-    # The weight mode for PuLID.
-    # https://github.com/ToTheBeginning/PuLID
-    pulid_mode: PuLIDMode = PuLIDMode.FIDELITY
-
-    # ControlNet control type for ControlNet union model.
-    # https://github.com/xinsir6/ControlNetPlus/tree/main
-    # The value of this field is only used when the model is ControlNetUnion.
-    union_control_type: ControlNetUnionControlType = ControlNetUnionControlType.UNKNOWN
-
     # Following fields should only be used in the API.
     # ====== Start of API only fields ======
     # Whether to save the detected map for this unit; defaults to True.
