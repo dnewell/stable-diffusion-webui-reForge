@@ -247,6 +247,7 @@ if is_intel_xpu():
 if args.vae_in_cpu:
     VAE_DTYPES = [torch.float32]
 
+# Please report is find issues with this enabled.
 def set_fp16_accumulation_if_available():
     try:
         if hasattr(torch.backends.cuda.matmul, 'allow_fp16_accumulation'):
