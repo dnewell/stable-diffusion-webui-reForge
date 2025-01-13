@@ -231,6 +231,8 @@ class ControlNetUiGroup(object):
         self.save_detected_map = None
         self.input_mode = gr.State(InputMode.SIMPLE)
         self.hr_option = None
+        self.ipa_block_weight = None
+        self.ipa_block_weight_selector = None
         self.batch_image_dir_state = None
         self.output_dir_state = None
         self.advanced_weighting = gr.State(None)
@@ -557,14 +559,42 @@ class ControlNetUiGroup(object):
                 elem_id=f"{elem_id_tabname}_{tabname}_controlnet_threshold_B_slider",
             )
 
-        self.control_mode = gr.Radio(
-            choices=[e.value for e in external_code.ControlMode],
-            value=self.default_unit.control_mode.value,
-            label="Control Mode",
-            elem_id=f"{elem_id_tabname}_{tabname}_controlnet_control_mode_radio",
-            elem_classes="controlnet_control_mode_radio",
-        )
-
+        with gr.Row(elem_classes=["controlnet_extra_control", "controlnet_row"]):
+            self.control_mode = gr.Radio(
+                choices=[e.value for e in external_code.ControlMode],
+                value=self.default_unit.control_mode.value,
+                label="Control Mode",
+                elem_id=f"{elem_id_tabname}_{tabname}_controlnet_control_mode_radio",
+                elem_classes="controlnet_control_mode_radio",
+            )
+            self.ipa_block_weight_selector = gr.Dropdown(
+                choices=list(external_code.ipa_block_weight_presets.keys()),
+                label="[SDXL] IP-A Block Weights",
+                value=list(external_code.ipa_block_weight_presets.keys())[0],
+                elem_id=f"{elem_id_tabname}_{tabname}_ipa_block_weight",
+                allow_custom_value=False,
+                visible=False,
+            )
+            self.ipa_block_weight = gr.Textbox(
+                label="Weights",
+                visible=False,
+                value="",
+                placeholder="Preset or custom 11XL weights, e.g.: 0,0,0,0, 0.5, 1,1,1,1,1,1",
+            )
+            
+        # Function to control visibility of the text box
+        def toggle_ipa_controlls(choice):
+            if choice == "IP-Adapter":
+                return gr.update(visible=True)
+            else:
+                return gr.update(visible=False)
+        self.type_filter.change(toggle_ipa_controlls, inputs=self.type_filter, outputs=self.ipa_block_weight)
+        self.type_filter.change(toggle_ipa_controlls, inputs=self.type_filter, outputs=self.ipa_block_weight_selector)
+        
+        def handle_dropdown_selection(alias):
+            return external_code.ipa_block_weight_presets.get(alias, "")
+        self.ipa_block_weight_selector.change(handle_dropdown_selection,inputs=self.ipa_block_weight_selector,outputs=self.ipa_block_weight)
+            
         self.resize_mode = gr.Radio(
             choices=[e.value for e in external_code.ResizeMode],
             value=self.default_unit.resize_mode.value,
@@ -582,7 +612,7 @@ class ControlNetUiGroup(object):
             elem_classes="controlnet_hr_option_radio",
             visible=False,
         )
-
+        
         # self.loopback = gr.Checkbox(
         #     label="[Batch Loopback] Automatically send generated images to this ControlNet unit in batch generation",
         #     value=self.default_unit.loopback,
@@ -622,6 +652,7 @@ class ControlNetUiGroup(object):
             self.pixel_perfect,
             self.control_mode,
             self.advanced_weighting,
+            self.ipa_block_weight,
         )
 
         unit = gr.State(self.default_unit)

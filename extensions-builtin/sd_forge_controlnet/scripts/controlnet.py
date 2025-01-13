@@ -492,6 +492,7 @@ class ControlNetForForgeOfficial(scripts.Script):
         params.model.negative_advanced_weighting = None
         params.model.advanced_frame_weighting = None
         params.model.advanced_sigma_weighting = None
+        params.model.target_blocks = unit.ipa_block_weight
 
         soft_weighting = {
             'input': [0.09941396206337118, 0.12050177219802567, 0.14606275417942507, 0.17704576264172736,

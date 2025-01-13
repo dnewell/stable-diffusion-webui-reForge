@@ -651,6 +651,7 @@ class IPAdapterApply:
                 "start_at": ("FLOAT", { "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.001 }),
                 "end_at": ("FLOAT", { "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.001 }),
                 "unfold_batch": ("BOOLEAN", { "default": False }),
+                "target_blocks": ("STRING", { "default": None }),
             },
             "optional": {
                 "attn_mask": ("MASK",),
@@ -663,7 +664,25 @@ class IPAdapterApply:
 
     def apply_ipadapter(self, ipadapter, model_filename, model, weight, clip_vision=None, image=None, weight_type="original",
                         noise=None, embeds=None, attn_mask=None, start_at=0.0, end_at=1.0, unfold_batch=False,
-                        insightface=None, faceid_v2=False, weight_v2=False, instant_id=False):
+                        insightface=None, faceid_v2=False, weight_v2=False, instant_id=False,
+                        target_blocks=None):
+                    
+        logger.debug(f"IPAdapter apply_ipadapter with target_blocks: {target_blocks}")
+        
+        if target_blocks is None or target_blocks == "":
+            target_blocks = [1,1,1,1,  1,  1,1,1,1,1,1]
+        else:
+            try:
+                target_blocks = alpha_params = [float(item.strip()) for item in target_blocks.split(',')]
+            except:
+                target_blocks = []
+        
+        if len(target_blocks) < 11:
+            logger.info(f"IPAdapter invalid number of weights for target_blocks: {len(target_blocks)} < 11. Using Full.")
+            target_blocks = [1,1,1,1,  1,  1,1,1,1,1,1]
+        else:   
+            logger.info(f"IPAdapter apply_ipadapter with target_blocks: {target_blocks}")
+            
         apply_ipadapter_start = time.perf_counter()
 
         self.dtype = torch.float16 if ldm_patched.modules.model_management.should_use_fp16() else torch.float32
@@ -840,7 +859,7 @@ class IPAdapterApply:
             "sigma_end": sigma_end,
             "unfold_batch": unfold_batch,
         }
-
+        
         if not self.is_sdxl:
             for id in [1,2,4,5,7,8]: # id of input_blocks that have cross attention
                 set_model_patch_replace(work_model, patch_kwargs, ("input", id))
@@ -850,20 +869,36 @@ class IPAdapterApply:
                 patch_kwargs["number"] += 1
             set_model_patch_replace(work_model, patch_kwargs, ("middle", 0))
         else:
+            if any(x < 0 for x in target_blocks):
+                logger.debug(f"IPAdapter setting weight_type to linear due to negative weight(s)")
+                patch_kwargs["weight_type"] = "linear"
+            bw_index = 0
             for id in [4,5,7,8]: # id of input_blocks that have cross attention
                 block_indices = range(2) if id in [4, 5] else range(10) # transformer_depth
                 for index in block_indices:
+                    patch_kwargs["weight"] = self.weight * target_blocks[bw_index]
+                    logger.debug(f"IPAdapter Patch IN{id:02}-{index:02} @ {self.weight * target_blocks[bw_index]}")
                     set_model_patch_replace(work_model, patch_kwargs, ("input", id, index))
                     patch_kwargs["number"] += 1
+                bw_index += 1
+            
+            bw_index = 5
             for id in range(6): # id of output_blocks that have cross attention
                 block_indices = range(2) if id in [3, 4, 5] else range(10) # transformer_depth
                 for index in block_indices:
+                    patch_kwargs["weight"] = self.weight * target_blocks[bw_index]
+                    logger.debug(f"IPAdapter Patch OUT{id:02}-{index:02} @ {self.weight * target_blocks[bw_index]}")
                     set_model_patch_replace(work_model, patch_kwargs, ("output", id, index))
                     patch_kwargs["number"] += 1
+                bw_index += 1
+                
+            bw_index = 4    
             for index in range(10):
+                patch_kwargs["weight"] = self.weight * target_blocks[bw_index]
+                logger.debug(f"IPAdapter Patch MID0-{index:02} @ {self.weight * target_blocks[bw_index]}")
                 set_model_patch_replace(work_model, patch_kwargs, ("middle", 0, index))
                 patch_kwargs["number"] += 1
-
+            
         apply_ipadapter_time = time.perf_counter() - apply_ipadapter_start
         logger.debug(f"IPAdapter apply_ipadapter time: {apply_ipadapter_time:.2f}s")
 

@@ -139,6 +139,7 @@ class IPAdapterPatcher(ControlModelPatcher):
         self.model_filename = model_filename
         self.faceid_v2 = False
         self.weight_v2 = False
+        self.target_blocks= None,
         return
 
     def process_before_every_sampling(self, process, cond, mask, *args, **kwargs):
@@ -160,6 +161,7 @@ class IPAdapterPatcher(ControlModelPatcher):
             faceid_v2=self.faceid_v2,
             weight_v2=self.weight_v2,
             attn_mask=mask.squeeze(1) if mask is not None else None,
+            target_blocks=self.target_blocks,
             **cond,
         )[0]
 
