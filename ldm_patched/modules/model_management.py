@@ -247,6 +247,18 @@ if is_intel_xpu():
 if args.vae_in_cpu:
     VAE_DTYPES = [torch.float32]
 
+def set_fp16_accumulation_if_available():
+    try:
+        if hasattr(torch.backends.cuda.matmul, 'allow_fp16_accumulation'):
+            current_state = torch.backends.cuda.matmul.allow_fp16_accumulation
+            print(f"FP16 accumulation flag found, current state: {current_state}")
+            torch.backends.cuda.matmul.allow_fp16_accumulation = True
+            print(f"FP16 accumulation set to: {torch.backends.cuda.matmul.allow_fp16_accumulation}")
+    except AttributeError:
+        print("FP16 accumulation flag not available in this torch version")
+
+set_fp16_accumulation_if_available()
+
 
 if ENABLE_PYTORCH_ATTENTION:
     torch.backends.cuda.enable_math_sdp(True)
