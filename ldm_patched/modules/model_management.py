@@ -247,19 +247,19 @@ if is_intel_xpu():
 if args.vae_in_cpu:
     VAE_DTYPES = [torch.float32]
 
-# Please report is find issues with this enabled.
 def set_fp16_accumulation_if_available():
-    try:
-        matmul = torch.backends.cuda.matmul
+    if args.allow_fp16_accumulation:
         try:
-            current_state = matmul.allow_fp16_accumulation
-            print(f"FP16 accumulation flag found, current state: {current_state}")
-            matmul.allow_fp16_accumulation = True
-            print(f"FP16 accumulation set to: {matmul.allow_fp16_accumulation}")
-        except (AttributeError, AssertionError):
-            print("FP16 accumulation flag not available in this torch version")
-    except Exception as e:
-        print(f"Could not access CUDA matmul settings: {str(e)}")
+            matmul = torch.backends.cuda.matmul
+            try:
+                current_state = matmul.allow_fp16_accumulation
+                print(f"FP16 accumulation flag found, current state: {current_state}")
+                matmul.allow_fp16_accumulation = True
+                print(f"FP16 accumulation set to: {matmul.allow_fp16_accumulation}")
+            except (AttributeError, AssertionError):
+                print("FP16 accumulation flag not available in this torch version")
+        except Exception as e:
+            print(f"Could not access CUDA matmul settings: {str(e)}")
 
 set_fp16_accumulation_if_available()
 

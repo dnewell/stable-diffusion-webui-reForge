@@ -94,6 +94,8 @@ parser.add_argument("--disable-xformers", action="store_true", help="Disable xfo
 upcast = parser.add_mutually_exclusive_group()
 upcast.add_argument("--force-upcast-attention", action="store_true", help="Force enable attention upcasting, please report if it fixes black images.")
 
+parser.add_argument("--allow-fp16-accumulation", action="store_true", help="Enable FP16 accumulation in cuBLAS operations")
+
 vram_group = parser.add_mutually_exclusive_group()
 vram_group.add_argument("--always-gpu", action="store_true", help="Store and run everything (text encoders/CLIP models, etc... on the GPU).")
 vram_group.add_argument("--always-high-vram", action="store_true", help="By default models will be unloaded to CPU memory after being used. This option keeps them in GPU memory.")
