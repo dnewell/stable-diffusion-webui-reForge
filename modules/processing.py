@@ -3397,11 +3397,15 @@ elif opts.sd_processing == "reForge A1111":
             steps = self.hr_second_pass_steps or self.steps
             total_steps = sampler_config.total_steps(steps) if sampler_config else steps
 
-            if self.hr_cfg <= 0:
-                self.hr_uc = None
-                print('Skipping unconditional conditioning (HR pass) when CFG is 0 or less. Negative Prompts are ignored.')
-            else:
-                self.hr_uc = self.get_conds_with_caching(prompt_parser.get_learned_conditioning, hr_negative_prompts, self.firstpass_steps, [self.cached_hr_uc, self.cached_uc], self.hr_extra_network_data, total_steps)
+            if self.enable_hr:
+                if self.hr_cfg < 0 or (self.hr_cfg == 0 and self.cfg_scale == 0):
+                    self.hr_uc = None
+                    print('Skipping unconditional conditioning (HR pass) due to negative HR CFG or zero CFG scales. Negative Prompts are ignored.')
+                elif self.hr_cfg == 0:
+                    self.hr_cfg = self.cfg_scale
+                    self.hr_uc = self.get_conds_with_caching(prompt_parser.get_learned_conditioning, hr_negative_prompts, self.firstpass_steps, [self.cached_hr_uc, self.cached_uc], self.hr_extra_network_data, total_steps)
+                else:
+                    self.hr_uc = self.get_conds_with_caching(prompt_parser.get_learned_conditioning, hr_negative_prompts, self.firstpass_steps, [self.cached_hr_uc, self.cached_uc], self.hr_extra_network_data, total_steps)
 
             self.hr_uc = self.get_conds_with_caching(prompt_parser.get_learned_conditioning, hr_negative_prompts, self.firstpass_steps, [self.cached_hr_uc, self.cached_uc], self.hr_extra_network_data, total_steps)
             self.hr_c = self.get_conds_with_caching(prompt_parser.get_multicond_learned_conditioning, hr_prompts, self.firstpass_steps, [self.cached_hr_c, self.cached_c], self.hr_extra_network_data, total_steps)
