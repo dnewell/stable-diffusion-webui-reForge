@@ -331,7 +331,7 @@ def create_ui():
                                     hr_resize_y = gr.Slider(minimum=0, maximum=2048, step=8, label="Resize height to", value=0, elem_id="txt2img_hr_resize_y")
 
                                 with FormRow(elem_id="txt2img_hires_fix_row_cfg", variant="compact"):
-                                    hr_cfg = gr.Slider(minimum=0.0, maximum=30.0, step=0.1, label="Hires CFG Scale", value=7.0, elem_id="txt2img_hr_cfg")
+                                    hr_cfg = gr.Slider(minimum=0.0, maximum=30.0, step=0.1, label="Hires CFG Scale", value=0.0, elem_id="txt2img_hr_cfg")
 
                                 with FormRow(elem_id="txt2img_hires_fix_row3", variant="compact", visible=opts.hires_fix_show_sampler) as hr_sampler_container:
 
