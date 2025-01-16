@@ -416,7 +416,22 @@ class LoadedModel:
         self.model_use_more_vram(use_more_vram, force_patch_weights=force_patch_weights)
         real_model = self.model.model
 
-        if is_intel_xpu() and not args.disable_ipex_hijack and 'ipex' in globals() and real_model is not None:
+        if args.torch_compile and not is_intel_xpu() and not directml_enabled:
+            torch_version = torch.__version__.split('.')
+            if int(torch_version[0]) >= 2:
+                print(f"Compiling model using torch.compile with mode: {args.torch_compile_mode}")
+                try:
+                    real_model = torch.compile(
+                        real_model, 
+                        mode=args.torch_compile_mode,
+                        fullgraph=False
+                    )
+                    print("Model compilation successful")
+                except Exception as e:
+                    print(f"Warning: torch.compile failed with error: {str(e)}")
+                    print("Falling back to uncompiled model")
+
+        if is_intel_xpu() and not args.disable_ipex_hijack:
             with torch.no_grad():
                 real_model = ipex.optimize(real_model.eval(), inplace=True, graph_mode=True, concat_linear=True)
 
