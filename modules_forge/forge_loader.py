@@ -23,6 +23,7 @@ import types
 
 import open_clip
 from transformers import CLIPTextModel, CLIPTokenizer
+from ldm_patched.modules.args_parser import args
 
 
 class FakeObject:
@@ -198,6 +199,11 @@ def load_model_for_a1111(timer, checkpoint_info=None, state_dict=None):
         embedding_directory=cmd_opts.embeddings_dir,
         output_model=True
     )
+    if args.torch_compile:
+        timer.record("start model compilation")
+        if forge_objects.unet is not None:
+            forge_objects.unet.compile_model(backend=args.torch_compile_backend)
+        timer.record("model compilation complete")
     sd_model.first_stage_model = forge_objects.vae.first_stage_model
     sd_model.model.diffusion_model = forge_objects.unet.model.diffusion_model
     sd_model.forge_objects = forge_objects

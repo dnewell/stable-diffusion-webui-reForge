@@ -4,6 +4,7 @@ import torch
 from ldm_patched.modules.model_patcher import ModelPatcher
 from ldm_patched.modules.sampler_helpers import convert_cond
 from ldm_patched.modules.samplers import encode_model_conds
+from ldm_patched.modules.args_parser import args
 
 
 class UnetPatcher(ModelPatcher):
@@ -13,6 +14,7 @@ class UnetPatcher(ModelPatcher):
         self.extra_preserved_memory_during_sampling = 0
         self.extra_model_patchers_during_sampling = []
         self.extra_concat_condition = None
+        self.compiled = False
 
     def clone(self):
         n = UnetPatcher(self.model, self.load_device, self.offload_device, self.size)
@@ -28,6 +30,7 @@ class UnetPatcher(ModelPatcher):
         n.patches_uuid = self.patches_uuid
         n.backup = self.backup
         n.object_patches_backup = self.object_patches_backup
+        n.compiled = self.compiled
         n.parent = self
         return n
 
@@ -61,6 +64,70 @@ class UnetPatcher(ModelPatcher):
 
         self.add_extra_model_patcher_during_sampling(patcher)
         return patcher
+    
+    def compile_model(self, backend="eager"):
+        """Compile the UNet model using torch.compile"""
+        if not hasattr(torch, 'compile'):
+            print("torch.compile not available - requires PyTorch 2.0 or newer")
+            return False
+        
+        if self.compiled:
+            print("Model already compiled")
+            return True
+            
+        try:
+            # Get the version check done first
+            torch_version = torch.__version__.split('.')
+            if int(torch_version[0]) < 2:
+                print(f"torch.compile requires PyTorch 2.0 or newer. Current version: {torch.__version__}")
+                return False
+
+            print(f"Compiling UNet model using torch.compile with backend: {backend} and mode: {args.torch_compile_mode}")
+            
+            # Configure dynamo
+            import torch._dynamo as dynamo
+            dynamo.config.suppress_errors = True
+            dynamo.config.verbose = True
+            
+            # Get the actual model
+            real_model = self.model.diffusion_model
+            
+            if args.torch_compile_mode == "max-autotune":
+                compile_options = {
+                    "backend": backend,
+                    "mode": None,  # Mode is ignored when using options
+                    "fullgraph": False,
+                    "options": {
+                        "max_autotune": True,
+                        "max_autotune_gemm": True,
+                        "max_autotune_pointwise": True,
+                        "trace.enabled": True,
+                        "trace.graph_diagram": True,
+                        "epilogue_fusion": True,
+                        "layout_optimization": True,
+                        "aggressive_fusion": True
+                    }
+                }
+            else:
+                compile_options = {
+                    "backend": backend,
+                    "mode": args.torch_compile_mode,
+                    "fullgraph": False
+                }
+            
+            try:
+                compiled_model = torch.compile(real_model, **compile_options)
+                self.model.diffusion_model = compiled_model
+                self.compiled = True
+                print("UNet model compilation successful")
+                return True
+            except Exception as e:
+                print(f"Warning: torch.compile failed with error: {str(e)}")
+                print("Falling back to uncompiled model")
+                return False
+        except Exception as e:
+            print(f"Error during model compilation: {str(e)}")
+            return False
 
     def add_patched_controlnet(self, cnet):
         cnet.set_previous_controlnet(self.controlnet_linked_list)
