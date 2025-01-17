@@ -6,6 +6,7 @@ __pycache__
 /ESRGAN/*
 /SwinIR/*
 /repositories
+/torch_compile_debug
 /venv
 /tmp
 /model.ckpt
