@@ -65,7 +65,7 @@ class UnetPatcher(ModelPatcher):
         self.add_extra_model_patcher_during_sampling(patcher)
         return patcher
     
-    def compile_model(self, backend="eager"):
+    def compile_model(self, backend="inductor"):
         """Compile the UNet model using torch.compile"""
         if not hasattr(torch, 'compile'):
             print("torch.compile not available - requires PyTorch 2.0 or newer")
