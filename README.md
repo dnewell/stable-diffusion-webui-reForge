@@ -135,7 +135,7 @@ This wouldn't be possible to do without the original ones!
 
 Huge credits to hako mikan for Lora block weight.
 
-Huge credits to cheald for Lora ctl (Control). Link for the reforge extension is: https://github.com/Panchovix/sd_webui_loractl_reforge_w.git
+Huge credits to cheald for Lora ctl (Control). Link for the reforge extension is: https://github.com/Panchovix/sd_webui_loractl_reforge_y.git
 
 Many thanks to @1rre for his work for preliminary working version for lora control!
 

@@ -977,7 +977,7 @@ def load_loras_blocks(self, names, lwei,te,unet,elements,ltype = "lora", starts 
         lbwf(te, unet, lwei, elements, starts)
 
     try:
-        import sd_webui_loractl_reforge_w.loractl.lib.lora_ctl_network as ctl
+        import sd_webui_loractl_reforge_y.loractl.lib.lora_ctl_network as ctl
         for old,new in oldnew:
             if old in ctl.lora_weights.keys():
                 ctl.lora_weights[new] = ctl.lora_weights[old]
