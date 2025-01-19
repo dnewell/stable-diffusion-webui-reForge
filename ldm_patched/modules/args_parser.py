@@ -79,7 +79,7 @@ parser.add_argument("--directml", type=int, nargs="?", metavar="DIRECTML_DEVICE"
 parser.add_argument("--disable-ipex-hijack", action="store_true")
 
 parser.add_argument("--torch-compile", action='store_true', help="Enable torch.compile for potential speedups")
-parser.add_argument("--torch-compile-backend", type=str, default="inductor", choices=["inductor", "cudagraphs", "aot_eager", "eager"], help="Backend for torch.compile")
+parser.add_argument("--torch-compile-backend", type=str, default="inductor", choices=["inductor", "cudagraphs"], help="Backend for torch.compile")
 parser.add_argument("--torch-compile-mode", type=str, default="default", choices=["default", "reduce-overhead", "max-autotune"], help="Compilation mode for torch.compile")
 
 class LatentPreviewMethod(enum.Enum):
