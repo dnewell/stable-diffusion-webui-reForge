@@ -7,7 +7,7 @@ import modules.shared
 INITIALIZED = False
 BACKEND = "WebUI"
 
-class _Rescaler:
+class Rescaler:
     def __init__(self, model, x, mode, **extra_args):
         self.model = model
         self.x = x
@@ -47,7 +47,7 @@ def dy_sampling_step(x, model, dt, sigma_hat, **extra_args):
     a_list = x.unfold(2, 2, 2).unfold(3, 2, 2).contiguous().view(batch_size, channels, m * n, 2, 2)
     c = a_list[:, :, :, 1, 1].view(batch_size, channels, m, n)
 
-    with _Rescaler(model, c, 'nearest-exact', **extra_args) as rescaler:
+    with Rescaler(model, c, 'nearest-exact', **extra_args) as rescaler:
         denoised = model(c, sigma_hat * c.new_ones([c.shape[0]]), **rescaler.extra_args)
     d = sampling.to_d(c, sigma_hat, denoised)
     c = c + d * dt
@@ -104,7 +104,7 @@ def sample_euler_dy(model, x, sigmas, extra_args=None, callback=None, disable=No
 def smea_sampling_step(x, model, dt, sigma_hat, **extra_args):
     m, n = x.shape[2], x.shape[3]
     x = torch.nn.functional.interpolate(input=x, scale_factor=(1.25, 1.25), mode='nearest-exact')
-    with _Rescaler(model, x, 'nearest-exact', **extra_args) as rescaler:
+    with Rescaler(model, x, 'nearest-exact', **extra_args) as rescaler:
         denoised = model(x, sigma_hat * x.new_ones([x.shape[0]]), **rescaler.extra_args)
     d = sampling.to_d(x, sigma_hat, denoised)
     x = x + d * dt
