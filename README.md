@@ -129,13 +129,13 @@ Some extra flags that can help with performance or save VRAM, or more, depending
 
 # Lora Block Weight and Lora ctl (Control)
 
-I've added these repos adapted for reforge as a built-in extensions.
+I've added these repos adapted for reforge.
 
 This wouldn't be possible to do without the original ones!
 
 Huge credits to hako mikan for Lora block weight.
 
-Huge credits to cheald for Lora ctl (Control).
+Huge credits to cheald for Lora ctl (Control). Link for the reforge extension is: https://github.com/Panchovix/sd_webui_loractl_reforge_w.git
 
 Many thanks to @1rre for his work for preliminary working version for lora control!
 
