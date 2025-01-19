@@ -23,6 +23,8 @@ from ldm_patched.modules.model_sampling import CONST
 from modules.shared import opts
 import numpy as np
 
+from modules.sd_samplers_kdiffusion_smea import Rescaler
+
 def append_zero(x):
     return torch.cat([x, x.new_zeros([1])])
 
@@ -340,29 +342,7 @@ class ODEFunction:
     def reset(self):
         self.step = 0
         self.pbar.reset()
-class Rescaler:
-    def __init__(self, model, x, mode, **extra_args):
-        self.model = model
-        self.x = x
-        self.mode = mode
-        self.extra_args = extra_args
 
-        self.latent_image, self.noise = model.latent_image, model.noise
-        self.denoise_mask = self.extra_args.get("denoise_mask", None)
-
-    def __enter__(self):
-        if self.latent_image is not None:
-            self.model.latent_image = torch.nn.functional.interpolate(input=self.latent_image, size=self.x.shape[2:4], mode=self.mode)
-        if self.noise is not None:
-            self.model.noise = torch.nn.functional.interpolate(input=self.latent_image, size=self.x.shape[2:4], mode=self.mode)
-        if self.denoise_mask is not None:
-            self.extra_args["denoise_mask"] = torch.nn.functional.interpolate(input=self.denoise_mask, size=self.x.shape[2:4], mode=self.mode)
-
-        return self
-
-    def __exit__(self, type, value, traceback):
-        del self.model.latent_image, self.model.noise
-        self.model.latent_image, self.model.noise = self.latent_image, self.noise
 class ODESampler:
     def __init__(self, solver, rtol, atol, max_steps):
         self.solver = solver
