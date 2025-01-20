@@ -303,7 +303,7 @@ if cpu_state != CPUState.GPU:
 if cpu_state == CPUState.MPS:
     vram_state = VRAMState.SHARED
 
-print("Set vram state to: {vram_state.name}")
+logging.info("Set vram state to: {vram_state.name}")
 
 ALWAYS_VRAM_OFFLOAD = args.always_offload_from_vram
 
@@ -350,13 +350,11 @@ except:
 
 if 'rtx' in torch_device_name.lower():
     if not args.pin_shared_memory:
-        print('Hint: your device supports --pin-shared-memory for potential speed improvements.')
+        print('Hint: your device supports --pin-shared-memory')
     if not args.cuda_malloc:
-        print('Hint: your device supports --cuda-malloc for potential speed improvements.')
+        print('Hint: your device supports --cuda-malloc')
     if not args.cuda_stream:
-        print('Hint: your device supports --cuda-stream for potential speed improvements.')
-
-print("VAE dtype:", VAE_DTYPES)
+        print('Hint: your device supports --cuda-stream')
 
 
 current_loaded_models = []
@@ -1008,6 +1006,8 @@ def get_free_memory(dev=None, torch_free_too=False):
         return (mem_free_total, mem_free_torch)
     else:
         return mem_free_total
+    
+print("VAE dtype:", VAE_DTYPES)
 
 def cpu_mode():
     global cpu_state
