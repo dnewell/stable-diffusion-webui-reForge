@@ -150,7 +150,6 @@ parser.add_argument("--pin-shared-memory", action="store_true")
 
 parser.add_argument("--disable-metadata", action="store_true", help="Disable saving prompt metadata in files.")
 parser.add_argument("--disable-all-custom-nodes", action="store_true", help="Disable loading all custom nodes.")
-parser.add_argument("--quick-test-for-ci", action="store_true", help="Quick test for CI.")
 
 parser.add_argument("--multi-user", action="store_true", help="Enables per-user storage.")
 parser.add_argument("--verbose", default='INFO', const='DEBUG', nargs="?", choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], help='Set the logging level')
