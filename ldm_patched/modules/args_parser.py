@@ -143,7 +143,6 @@ parser.add_argument("--disable-server-log", action="store_true", help="Don't pri
 parser.add_argument("--debug-mode", action="store_true", help="Enables more debug prints.")
 parser.add_argument("--is-windows-embedded-python", action="store_true", help="Windows standalone build: Enable convenient things that most people using the standalone windows build will probably enjoy (like auto opening the page on startup).")
 parser.add_argument("--disable-server-info", action="store_true", help="Disable saving prompt metadata in files.")
-parser.add_argument("--multi-user", action="store_true", help="Enables per-user storage.")
 parser.add_argument("--cuda-malloc", action="store_true")
 parser.add_argument("--cuda-stream", action="store_true")
 parser.add_argument("--pin-shared-memory", action="store_true")
