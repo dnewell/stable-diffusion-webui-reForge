@@ -29,9 +29,8 @@ def initialize_forge():
 
     for bad in bad_list:
         if bad in sys.argv:
-            print(f'Arg {bad} is removed in Forge.')
-            print(f'Now memory management is fully automatic and you do not need any command flags.')
-            print(f'Please just remove this flag.')
+            print(f'Arg {bad} is not the same on reForge')
+            print (f'You can use "--always-no-vram" or "--always-low-vram" for similar usability')
             print(f'In extreme cases, if you want to force previous lowvram/medvram behaviors, '
                   f'please use --always-offload-from-vram')
 
