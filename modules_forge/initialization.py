@@ -38,9 +38,9 @@ def initialize_forge():
 
     args_parser.args, _ = args_parser.parser.parse_known_args()
 
-    if args_parser.args.device_id is not None:
-        os.environ['CUDA_VISIBLE_DEVICES'] = str(args_parser.args.device_id)
-        print("Set device to:", args_parser.args.device_id)
+    if args_parser.args.cuda_device is not None:
+        os.environ['CUDA_VISIBLE_DEVICES'] = str(args_parser.args.cuda_device)
+        print("Set device to:", args_parser.args.cuda_device)
 
     if args_parser.args.cuda_malloc:
         from modules_forge.cuda_malloc import try_cuda_malloc
