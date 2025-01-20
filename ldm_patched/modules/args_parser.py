@@ -170,8 +170,6 @@ else:
 
 if args.is_windows_embedded_python:
     args.in_browser = True
-if args.disable_in_browser:
-    args.in_browser = False
 
 import logging
 logging_level = logging.INFO
