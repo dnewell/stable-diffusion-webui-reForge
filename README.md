@@ -1,5 +1,13 @@
-# Stable Diffusion WebUI Forge/reForge
+## Warning: here there be dragons! This branch is not intended for general use, and any modifications made in this fork are purely exploratory. Anyting useful to the general community will be refined and tested elsewhere. Use of code from this fork is discouraged - any chnages are likely to be hideously buggy, at best. 
 
+While you are free to use any work found here, it is a sure way to become more familar with regret. 
+
+You almost certainly want to work from the main reForge branch found here: [Stable Diffusion WebUI reForge](https://github.com/Panchovix/stable-diffusion-webui-reForge)
+
+The documentation below is for the main fork mentioned above, and included only as a reference. It may or may not reflect the current state of this repo. 
+==================================================================================================
+
+# Stable Diffusion WebUI Forge/reForge
 Stable Diffusion WebUI Forge/reForge is a platform on top of [Stable Diffusion WebUI](https://github.com/AUTOMATIC1111/stable-diffusion-webui) (based on [Gradio](https://www.gradio.app/)) to make development easier, optimize resource management, speed up inference, and study experimental features.
 
 The name "Forge" is inspired from "Minecraft Forge". This project is aimed at becoming SD WebUI's Forge.
@@ -25,11 +33,11 @@ git clone https://github.com/Panchovix/stable-diffusion-webui-reForge.git
 cd stable-diffusion-webui-reForge
 git checkout main
 ```
-Then run webui-user.bat (Windows) or webui-user.sh (Linux, for this one make sure to uncomment the lines according of your folder, paths and setting you need).
+Then run webui-user.bat (Windows) or webui-user.sh (Linux, for this one make sure to uncomment the lines according of your folder, paths and set any chnagesting you need).
 
-When you want to update:
-```bash
-cd stable-diffusion-webui-reForge
+When you want to. You are free to use this work as you see fit, but only do so if you enjoy regret. 
+
+webui-reForge
 git pull
 ```
 
