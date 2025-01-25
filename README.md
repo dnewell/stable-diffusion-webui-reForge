@@ -61,6 +61,28 @@ If you got stuck in a merge to resolve conflicts, you can go back with `git merg
 
 Pre-done package is planned, but I'm not sure how to do it. Any PR or help with this is appreciated.
 
+# MESSAGE IF YOU WERE ON DEV/DEV2/EXPERIMENTAL ON 2025-01-24
+
+Branches had some major issues and they had to be re-done. So you will get issues when trying to do a git pull, and if resolving conflicts, it will be not working correctly.
+
+To fix this, do this (if you had any modifications, backup them to another folder. If you used symbolic links for models, embeddings etc do the same)
+
+```bash
+git checkout main
+git fetch origin
+'if you weren't on dev, then do'
+git checkout dev
+git reset --hard origin/dev
+'if you weren't on dev2, then do'
+git checkout dev2
+git reset --hard origin/dev2
+'if you weren't on experimental, then do'
+git checkout experimental
+git reset --hard origin/experimental
+```
+
+Then you can do git checkout normally to the fixed branches.
+
 # Forge/reForge Backend
 
 Forge/reForge backend removes all WebUI's codes related to resource management and reworked everything. All previous CMD flags like `medvram, lowvram, medvram-sdxl, precision full, no half, no half vae, attention_xxx, upcast unet`, ... are all **REMOVED**. Adding these flags will not cause error but they will not do anything now.

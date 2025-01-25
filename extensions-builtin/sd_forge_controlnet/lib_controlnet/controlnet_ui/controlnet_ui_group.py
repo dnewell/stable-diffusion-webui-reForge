@@ -1,3 +1,4 @@
+import os        
 import json
 import gradio as gr
 import functools
@@ -227,6 +228,7 @@ class ControlNetUiGroup(object):
         self.hr_option = None
         self.ipa_block_weight = None
         self.ipa_block_weight_selector = None
+        self.ipa_block_weight_save_button = None                                                  
         self.batch_image_dir_state = None
         self.output_dir_state = None
         self.advanced_weighting = gr.State(None)
@@ -568,19 +570,45 @@ class ControlNetUiGroup(object):
                 value="",
                 placeholder="Preset or custom 11XL weights, e.g.: 0,0,0,0, 0.5, 1,1,1,1,1,1",
             )
+            self.ipa_block_weight_save_button = ToolButton(
+                value="\U0001f4be",
+                elem_classes=["cnet-ipa-preset-save"],
+                tooltip="Save Custom Preset",
+                visible=False,
+            )                                               
             
-        # Function to control visibility of the text box
+        IPA_CW_PATH = os.path.join("tmp", "ipa_custom_block_weight.txt")
         def toggle_ipa_controlls(choice):
             if choice == "IP-Adapter":
                 return gr.update(visible=True)
             else:
                 return gr.update(visible=False)
+                
+        def handle_dropdown_selection(alias):
+            if "Custom" not in alias:
+                return external_code.ipa_block_weight_presets.get(alias, "")
+            else:
+                if os.path.exists(IPA_CW_PATH):
+                    with open(IPA_CW_PATH, "r") as file:
+                        return file.readline().strip()
+                else:
+                    return ""
+                    
+        def fn_save_ipa_custom(value):
+            with open(IPA_CW_PATH, "w") as file:
+                file.write(value)
+            return gr.Dropdown.update(value=list(external_code.ipa_block_weight_presets.keys())[-1])
+                
         self.type_filter.change(toggle_ipa_controlls, inputs=self.type_filter, outputs=self.ipa_block_weight)
         self.type_filter.change(toggle_ipa_controlls, inputs=self.type_filter, outputs=self.ipa_block_weight_selector)
-        
-        def handle_dropdown_selection(alias):
-            return external_code.ipa_block_weight_presets.get(alias, "")
+        self.type_filter.change(toggle_ipa_controlls, inputs=self.type_filter, outputs=self.ipa_block_weight_save_button)                                                                                                                    
         self.ipa_block_weight_selector.change(handle_dropdown_selection,inputs=self.ipa_block_weight_selector,outputs=self.ipa_block_weight)
+        self.ipa_block_weight_save_button.click(
+            fn=fn_save_ipa_custom,
+            inputs=self.ipa_block_weight,
+            outputs=self.ipa_block_weight_selector,
+            show_progress=False,
+        )
             
         self.resize_mode = gr.Radio(
             choices=[e.value for e in external_code.ResizeMode],

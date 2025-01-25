@@ -13,7 +13,7 @@ import shlex
 from functools import lru_cache
 from typing import NamedTuple
 from pathlib import Path
-
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 from modules import cmd_args, errors
 from modules.paths_internal import script_path, extensions_dir, extensions_builtin_dir
 from modules.timer import startup_timer

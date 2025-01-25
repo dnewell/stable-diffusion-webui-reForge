@@ -9,6 +9,7 @@ from ldm_patched.modules.args_parser import args
 from modules_forge import stream
 import torch
 import sys
+import platform
 
 class VRAMState(Enum):
     DISABLED = 0    #No vram present: no need to move models to vram
@@ -758,6 +759,22 @@ def get_free_memory(dev=None, torch_free_too=False):
         return (mem_free_total, mem_free_torch)
     else:
         return mem_free_total
+    
+def mac_version():
+    try:
+        return tuple(int(n) for n in platform.mac_ver()[0].split("."))
+    except:
+        return None
+
+def force_upcast_attention_dtype():
+    upcast = args.disable_attention_upcast
+    macos_version = mac_version()
+    if macos_version is not None and ((14, 5) <= macos_version <= (15, 2)):  # black image bug on recent versions of macOS
+        upcast = True
+    if upcast:
+        return torch.float32
+    else:
+        return None
 
 def cpu_mode():
     global cpu_state

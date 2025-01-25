@@ -66,60 +66,88 @@ class UnetPatcher(ModelPatcher):
         return patcher
     
     def compile_model(self, backend="inductor"):
-        """Compile the UNet model using torch.compile"""
+        """Compile the self model using torch.compile"""
         if not hasattr(torch, 'compile'):
             print("torch.compile not available - requires PyTorch 2.0 or newer")
-            return False
+            return
         
-        if self.compiled:
-            print("Model already compiled")
-            return True
-            
         try:
-            # Get the version check done first
             torch_version = torch.__version__.split('.')
             if int(torch_version[0]) < 2:
                 print(f"torch.compile requires PyTorch 2.0 or newer. Current version: {torch.__version__}")
-                return False
+                return
 
-            print(f"Compiling UNet model using torch.compile with backend: {backend} and mode: {args.torch_compile_mode}")
-            
-            # Configure dynamo
             import torch._dynamo as dynamo
             dynamo.config.suppress_errors = True
             dynamo.config.verbose = True
-            
-            # Get the actual model
-            real_model = self.model.diffusion_model
-            
-            if args.torch_compile_mode == "max-autotune":
-                compile_options = {
-                    "backend": backend,
-                    "mode": None,  # Mode is ignored when using options
-                    "fullgraph": False,
-                    "options": {
-                        "max_autotune": True,
-                        "max_autotune_gemm": True,
-                        "max_autotune_pointwise": True,
-                        "trace.enabled": True,
-                        "trace.graph_diagram": True,
-                        "epilogue_fusion": True,
-                        "layout_optimization": True,
-                        "aggressive_fusion": True
-                    }
-                }
+            dynamo.config.cache_size_limit = 32
+
+            # Get the actual model to compile
+            if hasattr(self.model, 'diffusion_model'):
+                real_model = self.model.diffusion_model
             else:
-                compile_options = {
+                real_model = self.model
+
+            # Check if any individual options are enabled
+            has_custom_options = any([
+                args.torch_compile_epilogue_fusion,
+                args.torch_compile_max_autotune,
+                args.torch_compile_fallback_random,
+                args.torch_compile_shape_padding,
+                args.torch_compile_cudagraphs,
+                args.torch_compile_trace,
+                args.torch_compile_graph_diagram
+            ])
+
+            if backend == "cudagraphs":
+                # Simplified settings for cudagraphs
+                compile_settings = {
                     "backend": backend,
-                    "mode": args.torch_compile_mode,
-                    "fullgraph": False
+                    "fullgraph": True,
+                    "dynamic": True,
                 }
+            else:  # inductor and other backends
+                compile_settings = {
+                    "backend": backend,
+                    "fullgraph": False,
+                    "dynamic": True,
+                }
+
+                if has_custom_options:
+                    # If any custom options are specified, use options instead of mode
+                    options = {}
+                    if args.torch_compile_epilogue_fusion:
+                        options["epilogue_fusion"] = True
+                    if args.torch_compile_max_autotune:
+                        options["max_autotune"] = True
+                    if args.torch_compile_fallback_random:
+                        options["fallback_random"] = True
+                    if args.torch_compile_shape_padding:
+                        options["shape_padding"] = True
+                    if args.torch_compile_cudagraphs:
+                        options["triton.cudagraphs"] = True
+                    if args.torch_compile_trace:
+                        options["trace.enabled"] = True
+                    if args.torch_compile_graph_diagram:
+                        options["trace.graph_diagram"] = True
+
+                    compile_settings["options"] = options
+                else:
+                    # If no custom options, use the selected mode
+                    compile_settings["mode"] = args.torch_compile_mode
+
+            print(f"Compiling model using torch.compile with settings: {compile_settings}")
+
+            # Store settings for later recompilation if needed
+            real_model.compile_settings = compile_settings
             
             try:
-                compiled_model = torch.compile(real_model, **compile_options)
-                self.model.diffusion_model = compiled_model
-                self.compiled = True
-                print("UNet model compilation successful")
+                compiled_model = torch.compile(real_model, **compile_settings)
+                if hasattr(self.model, 'diffusion_model'):
+                    self.model.diffusion_model = compiled_model
+                else:
+                    self.model = compiled_model
+                print("Model compilation successful with dynamic shapes support")
                 return True
             except Exception as e:
                 print(f"Warning: torch.compile failed with error: {str(e)}")

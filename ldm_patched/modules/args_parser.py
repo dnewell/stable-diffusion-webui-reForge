@@ -1,5 +1,5 @@
-# Taken from https://github.com/comfyanonymous/ComfyUI
-# This file is only for reference, and not used in the backend or runtime.
+# Original code from Comfy, https://github.com/comfyanonymous/ComfyUI
+
 
 
 import argparse
@@ -82,7 +82,16 @@ parser.add_argument("--disable-ipex-hijack", action="store_true")
 
 parser.add_argument("--torch-compile", action='store_true', help="Enable torch.compile for potential speedups")
 parser.add_argument("--torch-compile-backend", type=str, default="inductor", choices=["inductor", "cudagraphs"], help="Backend for torch.compile")
-parser.add_argument("--torch-compile-mode", type=str, default="default", choices=["default", "reduce-overhead", "max-autotune"], help="Compilation mode for torch.compile")
+parser.add_argument("--torch-compile-mode", type=str, default="default", 
+                    choices=["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"], 
+                    help="Compilation mode for torch.compile. Only applies to inductor backend")
+parser.add_argument("--torch-compile-epilogue-fusion", action='store_true', help="Enable epilogue fusion (requires max-autotune)")
+parser.add_argument("--torch-compile-max-autotune", action='store_true', help="Enable max autotune")
+parser.add_argument("--torch-compile-fallback-random", action='store_true', help="Enable fallback random")
+parser.add_argument("--torch-compile-shape-padding", action='store_true', help="Enable shape padding")
+parser.add_argument("--torch-compile-cudagraphs", action='store_true', help="Enable CUDA graphs")
+parser.add_argument("--torch-compile-trace", action='store_true', help="Enable tracing")
+parser.add_argument("--torch-compile-graph-diagram", action='store_true', help="Enable graph diagram")
 
 class LatentPreviewMethod(enum.Enum):
     NoPreviews = "none"

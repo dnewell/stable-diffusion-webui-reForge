@@ -264,12 +264,12 @@ if opts.sd_processing == "reForge OG":
             self.pixels_after_sampling = []
             self.modified_noise = None
 
-        def fill_fields_from_opts(self):
-            self.s_min_uncond = self.s_min_uncond if self.s_min_uncond is not None else opts.s_min_uncond
-            self.s_churn = self.s_churn if self.s_churn is not None else opts.s_churn
-            self.s_tmin = self.s_tmin if self.s_tmin is not None else opts.s_tmin
-            self.s_tmax = (self.s_tmax if self.s_tmax is not None else opts.s_tmax) or float('inf')
-            self.s_noise = self.s_noise if self.s_noise is not None else opts.s_noise
+        # def fill_fields_from_opts(self):
+        #     self.s_min_uncond = self.s_min_uncond if self.s_min_uncond is not None else opts.s_min_uncond
+        #     self.s_churn = self.s_churn if self.s_churn is not None else opts.s_churn
+        #     self.s_tmin = self.s_tmin if self.s_tmin is not None else opts.s_tmin
+        #     self.s_tmax = (self.s_tmax if self.s_tmax is not None else opts.s_tmax) or float('inf')
+        #     self.s_noise = self.s_noise if self.s_noise is not None else opts.s_noise
 
         @property
         def sd_model(self):
@@ -869,7 +869,7 @@ if opts.sd_processing == "reForge OG":
         apply_circular_forge(p.sd_model, p.tiling)
         modules.sd_hijack.model_hijack.clear_comments()
 
-        p.fill_fields_from_opts()
+        # p.fill_fields_from_opts()
         p.setup_prompts()
 
         if isinstance(seed, list):
@@ -2102,12 +2102,12 @@ elif opts.sd_processing == "reForge A1111":
             self.pixels_after_sampling = []
             self.modified_noise = None
 
-        def fill_fields_from_opts(self):
-            self.s_min_uncond = self.s_min_uncond if self.s_min_uncond is not None else opts.s_min_uncond
-            self.s_churn = self.s_churn if self.s_churn is not None else opts.s_churn
-            self.s_tmin = self.s_tmin if self.s_tmin is not None else opts.s_tmin
-            self.s_tmax = (self.s_tmax if self.s_tmax is not None else opts.s_tmax) or float('inf')
-            self.s_noise = self.s_noise if self.s_noise is not None else opts.s_noise
+        # def fill_fields_from_opts(self):
+        #     self.s_min_uncond = self.s_min_uncond if self.s_min_uncond is not None else opts.s_min_uncond
+        #     self.s_churn = self.s_churn if self.s_churn is not None else opts.s_churn
+        #     self.s_tmin = self.s_tmin if self.s_tmin is not None else opts.s_tmin
+        #     self.s_tmax = (self.s_tmax if self.s_tmax is not None else opts.s_tmax) or float('inf')
+        #     self.s_noise = self.s_noise if self.s_noise is not None else opts.s_noise
 
         @property
         def sd_model(self):
@@ -2743,7 +2743,7 @@ elif opts.sd_processing == "reForge A1111":
         apply_circular_forge(p.sd_model, p.tiling)
         modules.sd_hijack.model_hijack.clear_comments()
 
-        p.fill_fields_from_opts()
+        # p.fill_fields_from_opts()
         p.setup_prompts()
 
         if isinstance(seed, list):

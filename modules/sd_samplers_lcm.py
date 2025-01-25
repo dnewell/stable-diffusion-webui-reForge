@@ -1,8 +1,8 @@
 import torch
 
-from k_diffusion import utils, sampling
-from k_diffusion.external import DiscreteEpsDDPMDenoiser
-from k_diffusion.sampling import default_noise_sampler, trange
+from ldm_patched.k_diffusion import utils, sampling
+from ldm_patched.k_diffusion.external import DiscreteEpsDDPMDenoiser
+from ldm_patched.k_diffusion.sampling import default_noise_sampler, trange
 
 from modules import shared, sd_samplers_cfg_denoiser, sd_samplers_kdiffusion, sd_samplers_common
 

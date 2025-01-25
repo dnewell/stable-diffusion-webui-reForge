@@ -1,6 +1,6 @@
 import dataclasses
 import torch
-import k_diffusion
+import ldm_patched.k_diffusion
 import numpy as np
 from scipy import stats
 from ldm_patched.k_diffusion.sampling import append_zero
@@ -14,7 +14,7 @@ def to_d(x, sigma, denoised):
     return (x - denoised) / sigma
 
 
-k_diffusion.sampling.to_d = to_d
+ldm_patched.k_diffusion.sampling.to_d = to_d
 
 
 @dataclasses.dataclass
@@ -44,7 +44,7 @@ def sgm_uniform(n, sigma_min, sigma_max, inner_model, device):
 
 def get_sigmas_karras(n, sigma_min, sigma_max, rho=7., device='cpu'):
     rho = shared.opts.karras_rho
-    return k_diffusion.sampling.get_sigmas_karras(n, sigma_min, sigma_max, rho, device)
+    return ldm_patched.k_diffusion.sampling.get_sigmas_karras(n, sigma_min, sigma_max, rho, device)
 
 def get_sigmas_exponential(n, sigma_min, sigma_max, device='cpu'):
     shrink_factor = shared.opts.exponential_shrink_factor
@@ -55,7 +55,7 @@ def get_sigmas_exponential(n, sigma_min, sigma_max, device='cpu'):
 
 def get_sigmas_polyexponential(n, sigma_min, sigma_max, device='cpu'):
     rho = shared.opts.polyexponential_rho
-    return k_diffusion.sampling.get_sigmas_polyexponential(n, sigma_min, sigma_max, rho, device)
+    return ldm_patched.k_diffusion.sampling.get_sigmas_polyexponential(n, sigma_min, sigma_max, rho, device)
 
 
 def get_sigmas_sinusoidal_sf(n, sigma_min, sigma_max, device='cpu'):
@@ -329,9 +329,9 @@ def get_sigmas_karras_dynamic(n, sigma_min, sigma_max, device='cpu'):
 
 schedulers = [
     Scheduler('automatic', 'Automatic', None),
-    Scheduler('karras', 'Karras', k_diffusion.sampling.get_sigmas_karras, default_rho=7.0),
-    Scheduler('exponential', 'Exponential', k_diffusion.sampling.get_sigmas_exponential),
-    Scheduler('polyexponential', 'Polyexponential', k_diffusion.sampling.get_sigmas_polyexponential, default_rho=1.0),
+    Scheduler('karras', 'Karras', ldm_patched.k_diffusion.sampling.get_sigmas_karras, default_rho=7.0),
+    Scheduler('exponential', 'Exponential', ldm_patched.k_diffusion.sampling.get_sigmas_exponential),
+    Scheduler('polyexponential', 'Polyexponential', ldm_patched.k_diffusion.sampling.get_sigmas_polyexponential, default_rho=1.0),
     Scheduler('sinusoidal_sf', 'Sinusoidal SF', get_sigmas_sinusoidal_sf),
     Scheduler('invcosinusoidal_sf', 'Invcosinusoidal SF', get_sigmas_invcosinusoidal_sf),
     Scheduler('react_cosinusoidal_dynsf', 'React Cosinusoidal DynSF', get_sigmas_react_cosinusoidal_dynsf),

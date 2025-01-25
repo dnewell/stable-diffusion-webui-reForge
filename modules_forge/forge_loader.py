@@ -163,14 +163,14 @@ def load_model_for_a1111(timer, checkpoint_info=None, state_dict=None):
         embedding_directory=cmd_opts.embeddings_dir,
         output_model=True
     )
+    sd_model.forge_objects = forge_objects
+    sd_model.forge_objects_original = forge_objects.shallow_copy()
+    sd_model.forge_objects_after_applying_lora = forge_objects.shallow_copy()
     if args.torch_compile:
         timer.record("start model compilation")
         if forge_objects.unet is not None:
             forge_objects.unet.compile_model(backend=args.torch_compile_backend)
         timer.record("model compilation complete")
-    sd_model.forge_objects = forge_objects
-    sd_model.forge_objects_original = forge_objects.shallow_copy()
-    sd_model.forge_objects_after_applying_lora = forge_objects.shallow_copy()
     timer.record("forge load real models")
 
     sd_model.first_stage_model = forge_objects.vae.first_stage_model

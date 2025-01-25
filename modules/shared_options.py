@@ -453,20 +453,8 @@ options_templates.update(options_section(('ui', "Live previews", "ui"), {
 options_templates.update(options_section(('sampler-params', "Sampler parameters", "sd"), {
     "hide_samplers": OptionInfo([], "Hide samplers in user interface", gr.CheckboxGroup, lambda: {"choices": [x.name for x in shared_items.list_samplers()]}).needs_reload_ui(),
     "eta_ddim": OptionInfo(0.0, "Eta for DDIM", gr.Slider, {"minimum": 0.0, "maximum": 1.0, "step": 0.01}, infotext='Eta DDIM').info("noise multiplier; higher = more unpredictable results"),
-    "eta_ancestral": OptionInfo(1.0, "Eta for k-diffusion samplers", gr.Slider, {"minimum": 0.0, "maximum": 1.0, "step": 0.01}, infotext='Eta').info("noise multiplier; applies to ancestral samplers (Euler a, DPM++ 2S a) and SDE samplers"),
     "ddim_discretize": OptionInfo('uniform', "img2img DDIM discretize", gr.Radio, {"choices": ['uniform', 'quad']}),
-    
-    # Existing sigma parameters
-    's_churn': OptionInfo(0.0, "sigma churn", gr.Slider, {"minimum": 0.0, "maximum": 100.0, "step": 0.01}, infotext='Sigma churn').info('amount of stochasticity; only applies to Euler, Heun, and DPM2'),
-    's_tmin':  OptionInfo(0.0, "sigma tmin",  gr.Slider, {"minimum": 0.0, "maximum": 10.0, "step": 0.01}, infotext='Sigma tmin').info('enable stochasticity; start value of the sigma range; only applies to Euler, Heun, and DPM2'),
-    's_tmax':  OptionInfo(0.0, "sigma tmax",  gr.Slider, {"minimum": 0.0, "maximum": 999.0, "step": 0.01}, infotext='Sigma tmax').info("0 = inf; end value of the sigma range; only applies to Euler, Heun, and DPM2"),
-    's_noise': OptionInfo(1.0, "sigma noise", gr.Slider, {"minimum": 0.0, "maximum": 1.1, "step": 0.001}, infotext='Sigma noise').info('amount of additional noise to counteract loss of detail during sampling'),
-    
-    # New parameters for DPM++ samplers
-    'dpmpp_sde_r': OptionInfo(0.5, "DPM++ SDE r value", gr.Slider, {"minimum": 0.0, "maximum": 1.0, "step": 0.01}, infotext='DPM++ SDE r').info("midpoint value for the SDE solver; only applies to DPM++ SDE sampler"),
-    'dpmpp_2m_sde_solver': OptionInfo('midpoint', "DPM++ 2M SDE solver type", gr.Radio, {"choices": ['midpoint', 'heun']}, infotext='DPM++ 2M solver').info("solver algorithm type; only applies to DPM++ 2M SDE sampler"),
-    
-    # Keep existing parameters
+    "eta_ancestral": OptionInfo(1.0, "Eta for k-diffusion samplers", gr.Slider, {"minimum": 0.0, "maximum": 1.0, "step": 0.01}, infotext='Eta').info("noise multiplier; applies to ancestral samplers (Euler a, DPM++ 2S a) and SDE samplers"),
     'sigma_min': OptionInfo(0.0, "sigma min", gr.Number, infotext='Schedule min sigma').info("0 = default (~0.03); minimum noise strength for k-diffusion noise scheduler"),
     'sigma_max': OptionInfo(0.0, "sigma max", gr.Number, infotext='Schedule max sigma').info("0 = default (~14.6); maximum noise strength for k-diffusion noise scheduler"),
     'rho':  OptionInfo(0.0, "rho", gr.Number, infotext='Schedule rho').info("0 = default (7 for karras, 1 for polyexponential); higher values result in a steeper noise schedule (decreases faster)"),
@@ -556,18 +544,18 @@ options_templates.update(options_section(('sampler-params', "reForge Sampler Par
     "ancestral_eta": OptionInfo(1.0, "Ancestral sampling eta", gr.Slider, {"minimum": -1.0, "maximum": 3.0, "step": 0.01}, infotext='Ancestral eta').info("Controls noise levels in ancestral sampling. 0 = no noise, 1 = default, higher values = more noise. Applies only to ancestral samplers"),
     
     # Euler Parameters
-    "euler_group": OptionHTML("<br><h3>Euler Comfy Settings</h3>"),
+    "euler_group": OptionHTML("<br><h3>Euler Settings</h3>"),
     "euler_og_s_churn": OptionInfo(0.0, "Euler - s_churn", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.01}, infotext='Euler s_churn'),
     "euler_og_s_tmin": OptionInfo(0.0, "Euler - s_tmin", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.01}, infotext='Euler s_tmin'),
     "euler_og_s_noise": OptionInfo(1.0, "Euler - s_noise", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.1}, infotext='Euler s_noise'),
 
     # Euler Ancestral Parameters
-    "euler_ancestral_group": OptionHTML("<br><h3>Euler Ancestral Comfy Settings</h3>"),
+    "euler_ancestral_group": OptionHTML("<br><h3>Euler Ancestral Settings</h3>"),
     "euler_ancestral_og_eta": OptionInfo(1.0, "Euler Ancestral - eta", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.01}, infotext='Euler Ancestral eta'),
     "euler_ancestral_og_s_noise": OptionInfo(1.0, "Euler Ancestral - s_noise", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.1}, infotext='Euler Ancestral s_noise'),
 
     # Heun Parameters
-    "heun_group": OptionHTML("<br><h3>Heun Comfy Settings</h3>"),
+    "heun_group": OptionHTML("<br><h3>Heun Settings</h3>"),
     "heun_og_s_churn": OptionInfo(0.0, "Heun - s_churn", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.01}, infotext='Heun s_churn'),
     "heun_og_s_tmin": OptionInfo(0.0, "Heun - s_tmin", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.01}, infotext='Heun s_tmin'),
     "heun_og_s_noise": OptionInfo(1.0, "Heun - s_noise", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.1}, infotext='Heun s_noise'),
@@ -577,24 +565,24 @@ options_templates.update(options_section(('sampler-params', "reForge Sampler Par
         Advanced configurations for DPM-based samplers."""),
 
     # DPM++ 2S Parameters
-    "dpm_2s_ancestral_group": OptionHTML("<br><h3>DPM++ 2S Ancestral Comfy Settings</h3>"),
+    "dpm_2s_ancestral_group": OptionHTML("<br><h3>DPM++ 2S Ancestral Settings</h3>"),
     "dpm_2s_ancestral_og_eta": OptionInfo(1.0, "DPM++ 2S Ancestral - eta", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.01}, infotext='DPM++ 2S Ancestral eta'),
     "dpm_2s_ancestral_og_s_noise": OptionInfo(1.0, "DPM++ 2S Ancestral - s_noise", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.1}, infotext='DPM++ 2S Ancestral s_noise'),
 
     # DPM++ SDE Parameters
-    "dpm_sde_group": OptionHTML("<br><h3>DPM++ SDE Comfy Settings</h3>"),
+    "dpm_sde_group": OptionHTML("<br><h3>DPM++ SDE Settings</h3>"),
     "dpmpp_sde_og_eta": OptionInfo(1.0, "DPM++ SDE - eta", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.01}, infotext='DPM++ SDE eta'),
     "dpmpp_sde_og_s_noise": OptionInfo(1.0, "DPM++ SDE - s_noise", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.1}, infotext='DPM++ SDE s_noise'),
     "dpmpp_sde_og_r": OptionInfo(0.5, "DPM++ SDE - r", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.1}, infotext='DPM++ SDE r'),
 
     # DPM++ 2M Parameters
-    "dpm_2m_group": OptionHTML("<br><h3>DPM++ 2M Comfy Settings</h3>"),
+    "dpm_2m_group": OptionHTML("<br><h3>DPM++ 2M Settings</h3>"),
     "dpmpp_2m_sde_og_eta": OptionInfo(1.0, "DPM++ 2M SDE - eta", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.01}, infotext='DPM++ 2M SDE eta'),
     "dpmpp_2m_sde_og_s_noise": OptionInfo(1.0, "DPM++ 2M SDE - s_noise", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.1}, infotext='DPM++ 2M SDE s_noise'),
     "dpmpp_2m_sde_og_solver_type": OptionInfo("midpoint", "DPM++ 2M SDE - solver_type", gr.Dropdown, {"choices": ["heun", "midpoint"]}, infotext='DPM++ 2M SDE solver_type'),
 
     # DPM++ 3M Parameters
-    "dpm_3m_group": OptionHTML("<br><h3>DPM++ 3M SDE Comfy Settings</h3>"),
+    "dpm_3m_group": OptionHTML("<br><h3>DPM++ 3M SDE Settings</h3>"),
     "dpmpp_3m_sde_og_eta": OptionInfo(1.0, "DPM++ 3M SDE - eta", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.01}, infotext='DPM++ 3M SDE eta'),
     "dpmpp_3m_sde_og_s_noise": OptionInfo(1.0, "DPM++ 3M SDE - s_noise", gr.Slider, {"minimum": -1.0, "maximum": 2.0, "step": 0.1}, infotext='DPM++ 3M SDE s_noise'),
 
@@ -788,6 +776,11 @@ options_templates.update(options_section(('sampler-params', "reForge Sampler Par
     "ode_custom_rtol": OptionInfo(-3.0, "ODE Custom - log relative tolerance", gr.Slider, {"minimum": -7, "maximum": 0, "step": 0.1}, infotext='ODE Custom rtol').info('Default = -3.0; log10 of relative tolerance for adaptive ODE solvers'),
     "ode_custom_atol": OptionInfo(-4.0, "ODE Custom - log absolute tolerance", gr.Slider, {"minimum": -7, "maximum": 0, "step": 0.1}, infotext='ODE Custom atol').info('Default = -4.0; log10 of absolute tolerance for adaptive ODE solvers'),
     "ode_custom_max_steps": OptionInfo(250, "ODE Custom - max steps", gr.Slider, {"minimum": 1, "maximum": 500, "step": 1}, infotext='ODE Custom max steps').info('Default = 250; maximum number of steps for ODE solver'),
+
+    "dpm_fast_options": OptionHTML("<br><h3>DPM/DPM2 options</h3>"),
+    "dpm_fast_s_noise": OptionInfo(1.0, "DPM Fast s_noise", gr.Slider, {"minimum": 0.0, "maximum": 2.0, "step": 0.01}),
+    "dpm_adaptive_s_noise": OptionInfo(1.0, "DPM Adaptive s_noise", gr.Slider, {"minimum": 0.0, "maximum": 2.0, "step": 0.01}),
+    "dpm2_ancestral_s_noise": OptionInfo(1.0, "DPM2 Ancestral s_noise", gr.Slider, {"minimum": 0.0, "maximum": 2.0, "step": 0.01}),
 
     }))
 

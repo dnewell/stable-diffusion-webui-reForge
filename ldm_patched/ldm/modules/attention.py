@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from torch import nn, einsum
 from einops import rearrange, repeat
 from typing import Optional, Any
+import logging
 
 from .diffusionmodules.util import checkpoint, AlphaBlender, timestep_embedding
 from .sub_quadratic_attention import efficient_dot_product_attention
@@ -34,6 +35,15 @@ if args.disable_attention_upcast:
     _ATTN_PRECISION = "fp16"
 else:
     _ATTN_PRECISION = "fp32"
+
+FORCE_UPCAST_ATTENTION_DTYPE = model_management.force_upcast_attention_dtype()
+
+def get_attn_precision(attn_precision):
+    if args.disable_attention_upcast:
+        return None
+    if FORCE_UPCAST_ATTENTION_DTYPE is not None:
+        return FORCE_UPCAST_ATTENTION_DTYPE
+    return attn_precision
 
 
 def exists(val):
@@ -94,23 +104,35 @@ class FeedForward(nn.Module):
 def Normalize(in_channels, dtype=None, device=None):
     return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True, dtype=dtype, device=device)
 
-def attention_basic(q, k, v, heads, mask=None):
-    b, _, dim_head = q.shape
-    dim_head //= heads
+def attention_basic(q, k, v, heads, mask=None, attn_precision=None, skip_reshape=False, skip_output_reshape=False):
+    attn_precision = get_attn_precision(attn_precision)
+
+    if skip_reshape:
+        b, _, _, dim_head = q.shape
+    else:
+        b, _, dim_head = q.shape
+        dim_head //= heads
+
     scale = dim_head ** -0.5
 
     h = heads
-    q, k, v = map(
-        lambda t: t.unsqueeze(3)
-        .reshape(b, -1, heads, dim_head)
-        .permute(0, 2, 1, 3)
-        .reshape(b * heads, -1, dim_head)
-        .contiguous(),
-        (q, k, v),
-    )
+    if skip_reshape:
+         q, k, v = map(
+            lambda t: t.reshape(b * heads, -1, dim_head),
+            (q, k, v),
+        )
+    else:
+        q, k, v = map(
+            lambda t: t.unsqueeze(3)
+            .reshape(b, -1, heads, dim_head)
+            .permute(0, 2, 1, 3)
+            .reshape(b * heads, -1, dim_head)
+            .contiguous(),
+            (q, k, v),
+        )
 
     # force cast to fp32 to avoid overflowing
-    if _ATTN_PRECISION =="fp32":
+    if attn_precision == torch.float32:
         sim = einsum('b i d, b j d -> b i j', q.float(), k.float()) * scale
     else:
         sim = einsum('b i d, b j d -> b i j', q, k) * scale
@@ -124,32 +146,54 @@ def attention_basic(q, k, v, heads, mask=None):
             mask = repeat(mask, 'b j -> (b h) () j', h=h)
             sim.masked_fill_(~mask, max_neg_value)
         else:
-            sim += mask
+            if len(mask.shape) == 2:
+                bs = 1
+            else:
+                bs = mask.shape[0]
+            mask = mask.reshape(bs, -1, mask.shape[-2], mask.shape[-1]).expand(b, heads, -1, -1).reshape(-1, mask.shape[-2], mask.shape[-1])
+            sim.add_(mask)
 
     # attention, what we cannot get enough of
     sim = sim.softmax(dim=-1)
 
     out = einsum('b i j, b j d -> b i d', sim.to(v.dtype), v)
-    out = (
-        out.unsqueeze(0)
-        .reshape(b, heads, -1, dim_head)
-        .permute(0, 2, 1, 3)
-        .reshape(b, -1, heads * dim_head)
-    )
+
+    if skip_output_reshape:
+        out = (
+            out.unsqueeze(0)
+            .reshape(b, heads, -1, dim_head)
+        )
+    else:
+        out = (
+            out.unsqueeze(0)
+            .reshape(b, heads, -1, dim_head)
+            .permute(0, 2, 1, 3)
+            .reshape(b, -1, heads * dim_head)
+        )
     return out
 
 
-def attention_sub_quad(query, key, value, heads, mask=None):
-    b, _, dim_head = query.shape
-    dim_head //= heads
+def attention_sub_quad(query, key, value, heads, mask=None, attn_precision=None, skip_reshape=False, skip_output_reshape=False):
+    attn_precision = get_attn_precision(attn_precision)
 
-    query = query.unsqueeze(3).reshape(b, -1, heads, dim_head).permute(0, 2, 1, 3).reshape(b * heads, -1, dim_head)
-    value = value.unsqueeze(3).reshape(b, -1, heads, dim_head).permute(0, 2, 1, 3).reshape(b * heads, -1, dim_head)
+    if skip_reshape:
+        b, _, _, dim_head = query.shape
+    else:
+        b, _, dim_head = query.shape
+        dim_head //= heads
 
-    key = key.unsqueeze(3).reshape(b, -1, heads, dim_head).permute(0, 2, 3, 1).reshape(b * heads, dim_head, -1)
+    if skip_reshape:
+        query = query.reshape(b * heads, -1, dim_head)
+        value = value.reshape(b * heads, -1, dim_head)
+        key = key.reshape(b * heads, -1, dim_head).movedim(1, 2)
+    else:
+        query = query.unsqueeze(3).reshape(b, -1, heads, dim_head).permute(0, 2, 1, 3).reshape(b * heads, -1, dim_head)
+        value = value.unsqueeze(3).reshape(b, -1, heads, dim_head).permute(0, 2, 1, 3).reshape(b * heads, -1, dim_head)
+        key = key.unsqueeze(3).reshape(b, -1, heads, dim_head).permute(0, 2, 3, 1).reshape(b * heads, dim_head, -1)
+
 
     dtype = query.dtype
-    upcast_attention = _ATTN_PRECISION =="fp32" and query.dtype != torch.float32
+    upcast_attention = attn_precision == torch.float32 and query.dtype != torch.float32
     if upcast_attention:
         bytes_per_token = torch.finfo(torch.float32).bits//8
     else:
@@ -173,6 +217,13 @@ def attention_sub_quad(query, key, value, heads, mask=None):
     if query_chunk_size is None:
         query_chunk_size = 512
 
+    if mask is not None:
+        if len(mask.shape) == 2:
+            bs = 1
+        else:
+            bs = mask.shape[0]
+        mask = mask.reshape(bs, -1, mask.shape[-2], mask.shape[-1]).expand(b, heads, -1, -1).reshape(-1, mask.shape[-2], mask.shape[-1])
+
     hidden_states = efficient_dot_product_attention(
         query,
         key,
@@ -186,32 +237,48 @@ def attention_sub_quad(query, key, value, heads, mask=None):
     )
 
     hidden_states = hidden_states.to(dtype)
-
-    hidden_states = hidden_states.unflatten(0, (-1, heads)).transpose(1,2).flatten(start_dim=2)
+    if skip_output_reshape:
+        hidden_states = hidden_states.unflatten(0, (-1, heads))
+    else:
+        hidden_states = hidden_states.unflatten(0, (-1, heads)).transpose(1,2).flatten(start_dim=2)
     return hidden_states
 
-def attention_split(q, k, v, heads, mask=None):
-    b, _, dim_head = q.shape
-    dim_head //= heads
+def attention_split(q, k, v, heads, mask=None, attn_precision=None, skip_reshape=False, skip_output_reshape=False):
+    attn_precision = get_attn_precision(attn_precision)
+
+    if skip_reshape:
+        b, _, _, dim_head = q.shape
+    else:
+        b, _, dim_head = q.shape
+        dim_head //= heads
+
     scale = dim_head ** -0.5
 
-    q, k, v = map(
-        lambda t: t.unsqueeze(3)
-        .reshape(b, -1, heads, dim_head)
-        .permute(0, 2, 1, 3)
-        .reshape(b * heads, -1, dim_head)
-        .contiguous(),
-        (q, k, v),
-    )
+    if skip_reshape:
+         q, k, v = map(
+            lambda t: t.reshape(b * heads, -1, dim_head),
+            (q, k, v),
+        )
+    else:
+        q, k, v = map(
+            lambda t: t.unsqueeze(3)
+            .reshape(b, -1, heads, dim_head)
+            .permute(0, 2, 1, 3)
+            .reshape(b * heads, -1, dim_head)
+            .contiguous(),
+            (q, k, v),
+        )
 
     r1 = torch.zeros(q.shape[0], q.shape[1], v.shape[2], device=q.device, dtype=q.dtype)
 
     mem_free_total = model_management.get_free_memory(q.device)
 
-    if _ATTN_PRECISION =="fp32":
+    if attn_precision == torch.float32:
         element_size = 4
+        upcast = True
     else:
         element_size = q.element_size()
+        upcast = False
 
     gb = 1024 ** 3
     tensor_size = q.shape[0] * q.shape[1] * k.shape[1] * element_size
@@ -230,6 +297,13 @@ def attention_split(q, k, v, heads, mask=None):
         raise RuntimeError(f'Not enough memory, use lower resolution (max approx. {max_res}x{max_res}). '
                             f'Need: {mem_required/64/gb:0.1f}GB free, Have:{mem_free_total/gb:0.1f}GB free')
 
+    if mask is not None:
+        if len(mask.shape) == 2:
+            bs = 1
+        else:
+            bs = mask.shape[0]
+        mask = mask.reshape(bs, -1, mask.shape[-2], mask.shape[-1]).expand(b, heads, -1, -1).reshape(-1, mask.shape[-2], mask.shape[-1])
+
     # print("steps", steps, mem_required, mem_free_total, modifier, q.element_size(), tensor_size)
     first_op_done = False
     cleared_cache = False
@@ -238,7 +312,7 @@ def attention_split(q, k, v, heads, mask=None):
             slice_size = q.shape[1] // steps if (q.shape[1] % steps) == 0 else q.shape[1]
             for i in range(0, q.shape[1], slice_size):
                 end = i + slice_size
-                if _ATTN_PRECISION =="fp32":
+                if upcast:
                     with torch.autocast(enabled=False, device_type = 'cuda'):
                         s1 = einsum('b i d, b j d -> b i j', q[:, i:end].float(), k.float()) * scale
                 else:
@@ -248,7 +322,10 @@ def attention_split(q, k, v, heads, mask=None):
                     if len(mask.shape) == 2:
                         s1 += mask[i:end]
                     else:
-                        s1 += mask[:, i:end]
+                        if mask.shape[1] == 1:
+                            s1 += mask
+                        else:
+                            s1 += mask[:, i:end]
 
                 s2 = s1.softmax(dim=-1).to(v.dtype)
                 del s1
@@ -262,23 +339,29 @@ def attention_split(q, k, v, heads, mask=None):
                 model_management.soft_empty_cache(True)
                 if cleared_cache == False:
                     cleared_cache = True
-                    print("out of memory error, emptying cache and trying again")
+                    logging.warning("out of memory error, emptying cache and trying again")
                     continue
                 steps *= 2
                 if steps > 64:
                     raise e
-                print("out of memory error, increasing steps and trying again", steps)
+                logging.warning("out of memory error, increasing steps and trying again {}".format(steps))
             else:
                 raise e
 
     del q, k, v
 
-    r1 = (
-        r1.unsqueeze(0)
-        .reshape(b, heads, -1, dim_head)
-        .permute(0, 2, 1, 3)
-        .reshape(b, -1, heads * dim_head)
-    )
+    if skip_output_reshape:
+        r1 = (
+            r1.unsqueeze(0)
+            .reshape(b, heads, -1, dim_head)
+        )
+    else:
+        r1 = (
+            r1.unsqueeze(0)
+            .reshape(b, heads, -1, dim_head)
+            .permute(0, 2, 1, 3)
+            .reshape(b, -1, heads * dim_head)
+        )
     return r1
 
 BROKEN_XFORMERS = False
@@ -289,53 +372,118 @@ try:
 except:
     pass
 
-def attention_xformers(q, k, v, heads, mask=None):
-    b, _, dim_head = q.shape
-    dim_head //= heads
+def attention_xformers(q, k, v, heads, mask=None, attn_precision=None, skip_reshape=False, skip_output_reshape=False):
+    b = q.shape[0]
+    dim_head = q.shape[-1]
+    # check to make sure xformers isn't broken
+    disabled_xformers = False
+
     if BROKEN_XFORMERS:
         if b * heads > 65535:
-            return attention_pytorch(q, k, v, heads, mask)
+            disabled_xformers = True
 
-    q, k, v = map(
-        lambda t: t.unsqueeze(3)
-        .reshape(b, -1, heads, dim_head)
-        .permute(0, 2, 1, 3)
-        .reshape(b * heads, -1, dim_head)
-        .contiguous(),
-        (q, k, v),
-    )
+    if not disabled_xformers:
+        if torch.jit.is_tracing() or torch.jit.is_scripting():
+            disabled_xformers = True
+
+    if disabled_xformers:
+        return attention_pytorch(q, k, v, heads, mask, skip_reshape=skip_reshape)
+
+    if skip_reshape:
+        # b h k d -> b k h d
+        q, k, v = map(
+            lambda t: t.permute(0, 2, 1, 3),
+            (q, k, v),
+        )
+    # actually do the reshaping
+    else:
+        dim_head //= heads
+        q, k, v = map(
+            lambda t: t.reshape(b, -1, heads, dim_head),
+            (q, k, v),
+        )
 
     if mask is not None:
-        pad = 8 - q.shape[1] % 8
-        mask_out = torch.empty([q.shape[0], q.shape[1], q.shape[1] + pad], dtype=q.dtype, device=q.device)
-        mask_out[:, :, :mask.shape[-1]] = mask
-        mask = mask_out[:, :, :mask.shape[-1]]
+        # add a singleton batch dimension
+        if mask.ndim == 2:
+            mask = mask.unsqueeze(0)
+        # add a singleton heads dimension
+        if mask.ndim == 3:
+            mask = mask.unsqueeze(1)
+        # pad to a multiple of 8
+        pad = 8 - mask.shape[-1] % 8
+        # the xformers docs says that it's allowed to have a mask of shape (1, Nq, Nk)
+        # but when using separated heads, the shape has to be (B, H, Nq, Nk)
+        # in flux, this matrix ends up being over 1GB
+        # here, we create a mask with the same batch/head size as the input mask (potentially singleton or full)
+        mask_out = torch.empty([mask.shape[0], mask.shape[1], q.shape[1], mask.shape[-1] + pad], dtype=q.dtype, device=q.device)
+
+        mask_out[..., :mask.shape[-1]] = mask
+        # doesn't this remove the padding again??
+        mask = mask_out[..., :mask.shape[-1]]
+        mask = mask.expand(b, heads, -1, -1)
 
     out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=mask)
 
-    out = (
-        out.unsqueeze(0)
-        .reshape(b, heads, -1, dim_head)
-        .permute(0, 2, 1, 3)
-        .reshape(b, -1, heads * dim_head)
-    )
+    if skip_output_reshape:
+        out = out.permute(0, 2, 1, 3)
+    else:
+        out = (
+            out.reshape(b, -1, heads * dim_head)
+        )
+
     return out
 
-def attention_pytorch(q, k, v, heads, mask=None):
-    b, _, dim_head = q.shape
-    dim_head //= heads
-    q, k, v = map(
-        lambda t: t.view(b, -1, heads, dim_head).transpose(1, 2),
-        (q, k, v),
-    )
+if model_management.is_nvidia(): #pytorch 2.3 and up seem to have this issue.
+    SDP_BATCH_LIMIT = 2**15
+else:
+    #TODO: other GPUs ?
+    SDP_BATCH_LIMIT = 2**31
 
-    out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=mask, dropout_p=0.0, is_causal=False)
-    out = (
-        out.transpose(1, 2).reshape(b, -1, heads * dim_head)
-    )
+def attention_pytorch(q, k, v, heads, mask=None, attn_precision=None, skip_reshape=False, skip_output_reshape=False):
+    if skip_reshape:
+        b, _, _, dim_head = q.shape
+    else:
+        b, _, dim_head = q.shape
+        dim_head //= heads
+        q, k, v = map(
+            lambda t: t.view(b, -1, heads, dim_head).transpose(1, 2),
+            (q, k, v),
+        )
+
+    if mask is not None:
+        # add a batch dimension if there isn't already one
+        if mask.ndim == 2:
+            mask = mask.unsqueeze(0)
+        # add a heads dimension if there isn't already one
+        if mask.ndim == 3:
+            mask = mask.unsqueeze(1)
+
+    if SDP_BATCH_LIMIT >= b:
+        out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=mask, dropout_p=0.0, is_causal=False)
+        if not skip_output_reshape:
+            out = (
+                out.transpose(1, 2).reshape(b, -1, heads * dim_head)
+            )
+    else:
+        out = torch.empty((b, q.shape[2], heads * dim_head), dtype=q.dtype, layout=q.layout, device=q.device)
+        for i in range(0, b, SDP_BATCH_LIMIT):
+            m = mask
+            if mask is not None:
+                if mask.shape[0] > 1:
+                    m = mask[i : i + SDP_BATCH_LIMIT]
+
+            out[i : i + SDP_BATCH_LIMIT] = torch.nn.functional.scaled_dot_product_attention(
+                q[i : i + SDP_BATCH_LIMIT],
+                k[i : i + SDP_BATCH_LIMIT],
+                v[i : i + SDP_BATCH_LIMIT],
+                attn_mask=m,
+                dropout_p=0.0, is_causal=False
+            ).transpose(1, 2).reshape(-1, q.shape[2], heads * dim_head)
     return out
 
-def attention_sage(q, k, v, heads, mask=None, attn_precision=None, skip_reshape=False):
+
+def attention_sage(q, k, v, heads, mask=None, attn_precision=None, skip_reshape=False, skip_output_reshape=False):
     if skip_reshape:
         b, _, _, dim_head = q.shape
         tensor_layout="HND"
@@ -347,6 +495,7 @@ def attention_sage(q, k, v, heads, mask=None, attn_precision=None, skip_reshape=
             (q, k, v),
         )
         tensor_layout="NHD"
+
     if mask is not None:
         # add a batch dimension if there isn't already one
         if mask.ndim == 2:
@@ -354,13 +503,18 @@ def attention_sage(q, k, v, heads, mask=None, attn_precision=None, skip_reshape=
         # add a heads dimension if there isn't already one
         if mask.ndim == 3:
             mask = mask.unsqueeze(1)
+
     out = sageattn(q, k, v, attn_mask=mask, is_causal=False, tensor_layout=tensor_layout)
     if tensor_layout == "HND":
-        out = (
-            out.transpose(1, 2).reshape(b, -1, heads * dim_head)
-        )
+        if not skip_output_reshape:
+            out = (
+                out.transpose(1, 2).reshape(b, -1, heads * dim_head)
+            )
     else:
-        out = out.reshape(b, -1, heads * dim_head)
+        if skip_output_reshape:
+            out = out.transpose(1, 2)
+        else:
+            out = out.reshape(b, -1, heads * dim_head)
     return out
 
 
@@ -494,6 +648,7 @@ class BasicTransformerBlock(nn.Module):
 
         extra_options["n_heads"] = self.n_heads
         extra_options["dim_head"] = self.d_head
+        # extra_options["attn_precision"] = self.attn_precision
 
         if self.ff_in:
             x_skip = x
@@ -535,7 +690,7 @@ class BasicTransformerBlock(nn.Module):
             n = attn1_replace_patch[block_attn1](n, context_attn1, value_attn1, extra_options)
             n = self.attn1.to_out(n)
         else:
-            n = self.attn1(n, context=context_attn1, value=value_attn1, transformer_options=extra_options)
+            n = self.attn1(n, context=context_attn1, value=value_attn1)
 
         if "attn1_output_patch" in transformer_patches:
             patch = transformer_patches["attn1_output_patch"]
@@ -575,7 +730,7 @@ class BasicTransformerBlock(nn.Module):
                 n = attn2_replace_patch[block_attn2](n, context_attn2, value_attn2, extra_options)
                 n = self.attn2.to_out(n)
             else:
-                n = self.attn2(n, context=context_attn2, value=value_attn2, transformer_options=extra_options)
+                n = self.attn2(n, context=context_attn2, value=value_attn2)
 
         if "attn2_output_patch" in transformer_patches:
             patch = transformer_patches["attn2_output_patch"]
@@ -643,7 +798,7 @@ class SpatialTransformer(nn.Module):
         x = self.norm(x)
         if not self.use_linear:
             x = self.proj_in(x)
-        x = rearrange(x, 'b c h w -> b (h w) c').contiguous()
+        x = x.movedim(1, 3).flatten(1, 2).contiguous()
         if self.use_linear:
             x = self.proj_in(x)
         for i, block in enumerate(self.transformer_blocks):
@@ -651,11 +806,10 @@ class SpatialTransformer(nn.Module):
             x = block(x, context=context[i], transformer_options=transformer_options)
         if self.use_linear:
             x = self.proj_out(x)
-        x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w).contiguous()
+        x = x.reshape(x.shape[0], h, w, x.shape[-1]).movedim(3, 1).contiguous()
         if not self.use_linear:
             x = self.proj_out(x)
         return x + x_in
-
 
 class SpatialVideoTransformer(SpatialTransformer):
     def __init__(

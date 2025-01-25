@@ -65,6 +65,7 @@ ipa_block_weight_presets = {
     "Composition"           : "0, 0, 0, 0, 0.0, 1, 0, 0, 0, 0, 0", 
     "Composition (Strong)"  : "0, 0, 0, 1, 0.0, 1, 0, 0, 0, 0, 0", 
     "Style+Composition"     : "0, 0, 1, 1, 0.0, 1, 1, 0, 0, 0, 0", 
+    "Custom"                : "",
 }
 
 

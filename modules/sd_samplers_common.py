@@ -7,8 +7,7 @@ from modules import devices, images, sd_vae_approx, sd_samplers, sd_vae_taesd, s
 from modules.shared import opts, state
 from modules_forge.forge_sampler import sampling_prepare, sampling_cleanup
 from modules import extra_networks
-import k_diffusion.sampling
-
+import ldm_patched.k_diffusion.sampling
 
 SamplerDataTuple = namedtuple('SamplerData', ['name', 'constructor', 'aliases', 'options'])
 
@@ -301,7 +300,7 @@ class Sampler:
         self.eta = p.eta if p.eta is not None else getattr(opts, self.eta_option_field, 0.0)
         self.s_min_uncond = getattr(p, 's_min_uncond', 0.0)
 
-        k_diffusion.sampling.torch = TorchHijack(p)
+        ldm_patched.k_diffusion.sampling.torch = TorchHijack(p)
 
         extra_params_kwargs = {}
         for param_name in self.extra_params:
@@ -358,7 +357,7 @@ class Sampler:
         if shared.opts.no_dpmpp_sde_batch_determinism:
             return None
 
-        from k_diffusion.sampling import BrownianTreeNoiseSampler
+        from ldm_patched.k_diffusion.sampling import BrownianTreeNoiseSampler
         sigma_min, sigma_max = sigmas[sigmas > 0].min(), sigmas.max()
         current_iter_seeds = p.all_seeds[p.iteration * p.batch_size:(p.iteration + 1) * p.batch_size]
         return BrownianTreeNoiseSampler(x, sigma_min, sigma_max, seed=current_iter_seeds)

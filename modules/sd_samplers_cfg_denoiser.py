@@ -163,6 +163,7 @@ if opts.sd_sampler_cfg_denoiser == "reForge":
 
             if self.p.is_hr_pass == True:
                 cond_scale = self.p.hr_cfg
+            s_min_uncond = getattr(shared.opts, 's_min_uncond', 0.0)
             if s_min_uncond > 0 and sigma[0] < s_min_uncond and not is_edit_model:
                 if self.step % 2 == 0 or shared.opts.s_min_uncond_all:
                     skip_uncond = True
@@ -409,7 +410,7 @@ elif opts.sd_sampler_cfg_denoiser == "reForgeDev":
             cfg_denoiser_callback(denoiser_params)
 
             skip_uncond = False
-
+            s_min_uncond = getattr(shared.opts, 's_min_uncond', 0.0)
             if s_min_uncond > 0 and sigma[0] < s_min_uncond and not is_edit_model:
                 if self.step % 2 == 0 or shared.opts.s_min_uncond_all:
                     skip_uncond = True

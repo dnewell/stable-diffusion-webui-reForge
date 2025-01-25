@@ -1084,38 +1084,84 @@ class Script(scripts.Script):
                 processed.infotexts[:1 + z_count] = grid_infotext[:1 + z_count]
 
                 if opts.grid_save:
-                    # Auto-save main grid
+                    # Save the main xyz grid
                     images.save_image(
-                        processed.images[0], 
-                        p.outpath_grids, 
-                        "xyz_grid", 
-                        info=processed.infotexts[0], 
-                        extension=opts.grid_format, 
-                        prompt=processed.all_prompts[0], 
-                        seed=processed.all_seeds[0], 
-                        grid=True, 
+                        processed.images[0],
+                        p.outpath_grids,
+                        "xyz_grid",
+                        info=processed.infotexts[0],
+                        extension=opts.grid_format,
+                        prompt=processed.all_prompts[0],
+                        seed=processed.all_seeds[0],
+                        grid=True,
                         p=processed
                     )
 
+                    # Save sub-grids if enabled
+                    if include_sub_grids:
+                        for idx in range(1, z_count + 1):
+                            images.save_image(
+                                processed.images[idx],
+                                p.outpath_grids,
+                                f"xyz_grid_z_{idx}",
+                                info=processed.infotexts[idx],
+                                extension=opts.grid_format,
+                                prompt=processed.all_prompts[idx],
+                                seed=processed.all_seeds[idx],
+                                grid=True,
+                                p=processed
+                            )
+
+                    # Save individual images if enabled
+                    if include_lone_images:
+                        individual_images = processed.images[z_count + 1:]
+                        individual_infos = processed.infotexts[z_count + 1:]
+                        individual_prompts = processed.all_prompts[z_count + 1:]
+                        individual_seeds = processed.all_seeds[z_count + 1:]
+
+                        for idx, (image, info, prompt, seed) in enumerate(zip(
+                            individual_images, individual_infos, individual_prompts, individual_seeds)):
+                            images.save_image(
+                                image,
+                                p.outpath_grids,
+                                f"xyz_grid_image_{idx + 1}",
+                                info=info,
+                                extension=opts.grid_format,
+                                prompt=prompt,
+                                seed=seed,
+                                grid=False,
+                                p=processed
+                            )
+
                 # Organize the final image list
                 if include_lone_images:
-                    # Keep the main grid and individual images
+                    # Keep main grid, sub-grids (if enabled), and individual images
                     main_grid = processed.images[0]
-                    individual_images = processed.images[z_count + 1:]  # Get only the individual images
-                    processed.images = [main_grid] + individual_images
-                    
+                    sub_grids = processed.images[1:z_count + 1] if include_sub_grids else []
+                    individual_images = processed.images[z_count + 1:]
+                    processed.images = [main_grid] + sub_grids + individual_images
+
                     # Adjust other lists accordingly
                     main_info = processed.infotexts[0]
+                    sub_infos = processed.infotexts[1:z_count + 1] if include_sub_grids else []
                     individual_infos = processed.infotexts[z_count + 1:]
-                    processed.infotexts = [main_info] + individual_infos
-                    
+                    processed.infotexts = [main_info] + sub_infos + individual_infos
+
                     main_prompt = processed.all_prompts[0]
+                    sub_prompts = processed.all_prompts[1:z_count + 1] if include_sub_grids else []
                     individual_prompts = processed.all_prompts[z_count + 1:]
-                    processed.all_prompts = [main_prompt] + individual_prompts
-                    
+                    processed.all_prompts = [main_prompt] + sub_prompts + individual_prompts
+
                     main_seed = processed.all_seeds[0]
+                    sub_seeds = processed.all_seeds[1:z_count + 1] if include_sub_grids else []
                     individual_seeds = processed.all_seeds[z_count + 1:]
-                    processed.all_seeds = [main_seed] + individual_seeds
+                    processed.all_seeds = [main_seed] + sub_seeds + individual_seeds
+                elif include_sub_grids:
+                    # Keep only the main grid and sub-grids
+                    processed.images = processed.images[:z_count + 1]
+                    processed.infotexts = processed.infotexts[:z_count + 1]
+                    processed.all_prompts = processed.all_prompts[:z_count + 1]
+                    processed.all_seeds = processed.all_seeds[:z_count + 1]
                 else:
                     # Keep only the main grid
                     processed.images = [processed.images[0]]
